@@ -23,6 +23,8 @@ export default function App() {
   const [forceNameSetup, setForceNameSetup] = useState(false);
   const [showChangeName, setShowChangeName] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [uiScale, setUiScale] = useState(100);
+  const [userSetScale, setUserSetScale] = useState(false);
 
   const [gameState, setGameState] = useState<GameState>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('STANDARD');
@@ -71,6 +73,22 @@ export default function App() {
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
+
+  useEffect(() => {
+    if (userSetScale) return;
+    const checkScale = () => {
+      const width = window.innerWidth;
+      // Base resolution we want to fit is roughly 1000px width.
+      if (width < 1000) {
+        setUiScale(Math.max(40, Math.floor((width / 1000) * 100)));
+      } else {
+        setUiScale(100);
+      }
+    };
+    checkScale();
+    window.addEventListener('resize', checkScale);
+    return () => window.removeEventListener('resize', checkScale);
+  }, [userSetScale]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -216,16 +234,26 @@ export default function App() {
     return <div className="min-h-screen bg-stone-950 flex items-center justify-center text-amber-500 font-black text-2xl">LOADING...</div>;
   }
 
-  return (
-    <div className="min-h-screen bg-stone-950 text-stone-50 overflow-hidden font-sans selection:bg-amber-500/30 relative">
-      <button 
-        onClick={toggleFullscreen} 
-        className="absolute top-4 left-4 z-50 p-3 bg-stone-800 text-stone-400 hover:text-stone-100 rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all"
-      >
-        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
-      </button>
+  const scaleFactor = uiScale / 100;
 
-      {!user && <AuthUI />}
+  return (
+    <div className="fixed inset-0 bg-stone-950 text-stone-50 overflow-hidden font-sans selection:bg-amber-500/30 flex items-center justify-center">
+      <div 
+        style={{ 
+          transform: `scale(${scaleFactor})`, 
+          width: `${100 / scaleFactor}vw`,
+          height: `${100 / scaleFactor}vh`,
+        }} 
+        className="relative flex flex-col items-center justify-center"
+      >
+        <button 
+          onClick={toggleFullscreen} 
+          className="absolute top-4 left-4 z-50 p-3 bg-stone-800 text-stone-400 hover:text-stone-100 rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all"
+        >
+          {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+        </button>
+
+        {!user && <AuthUI />}
 
       {user && forceNameSetup && (
         <DisplayNameModal 
@@ -267,6 +295,35 @@ export default function App() {
                     <p className="text-sm font-black text-stone-300 truncate">{displayName || 'No Name'}</p>
                   </div>
                 </div>
+
+                <div className="mb-4 bg-stone-950 p-3 rounded-xl border-2 border-stone-800">
+                  <label className="text-xs font-bold text-stone-500 uppercase mb-2 flex justify-between">
+                    <span>UI Scale</span>
+                    <span className="text-amber-500">{uiScale}%</span>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="40" 
+                    max="200" 
+                    step="5"
+                    value={uiScale} 
+                    onChange={(e) => {
+                      setUiScale(Number(e.target.value));
+                      setUserSetScale(true);
+                    }}
+                    className="w-full accent-amber-500 mb-1"
+                  />
+                  <button 
+                    onClick={() => {
+                      setUserSetScale(false);
+                      window.dispatchEvent(new Event('resize'));
+                    }}
+                    className="text-[10px] text-stone-500 hover:text-stone-300 uppercase font-bold w-full text-center"
+                  >
+                    Reset to Auto
+                  </button>
+                </div>
+
                 <button 
                   onClick={() => { setShowSettings(false); setShowChangeName(true); }}
                   className="w-full py-3 mb-2 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2"
@@ -382,7 +439,7 @@ export default function App() {
             key="playing"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="w-full h-screen flex flex-col"
+            className="w-full h-full flex flex-col"
           >
             <div className="p-4 bg-stone-900 border-b-4 border-stone-800 flex justify-between items-center shadow-lg z-10">
               <div className="flex gap-8">
@@ -448,7 +505,7 @@ export default function App() {
             key="gameover"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-red-900 shadow-2xl max-w-2xl w-full"
+            className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-red-900 shadow-2xl max-w-2xl w-full z-10"
           >
             <Skull className="w-32 h-32 text-red-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(153,27,27)]" />
             <h2 className="text-8xl font-black text-red-500 mb-4 drop-shadow-[0_6px_0_rgb(153,27,27)]">RUN ENDED</h2>
@@ -462,6 +519,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
