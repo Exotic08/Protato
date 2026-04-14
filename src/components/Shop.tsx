@@ -13,6 +13,8 @@ interface ShopProps {
   onNextWave: () => void;
   currentWeapons: Weapon[];
   wave: number;
+  multiplayerReadyCount?: number;
+  multiplayerTotalCount?: number;
 }
 
 const ICON_MAP: { [key: string]: any } = {
@@ -20,7 +22,7 @@ const ICON_MAP: { [key: string]: any } = {
 };
 
 export const Shop: React.FC<ShopProps> = ({ 
-  materials, onBuyWeapon, onBuyItem, onUpgradeWeapon, onReroll, onNextWave, currentWeapons, wave 
+  materials, onBuyWeapon, onBuyItem, onUpgradeWeapon, onReroll, onNextWave, currentWeapons, wave, multiplayerReadyCount, multiplayerTotalCount 
 }) => {
   const [shopItems, setShopItems] = React.useState<(Weapon | Item)[]>([]);
   const [rerollCost, setRerollCost] = React.useState(Math.max(1, Math.floor(wave / 2)));
@@ -96,6 +98,15 @@ export const Shop: React.FC<ShopProps> = ({
       case 4: return 'border-purple-500 bg-purple-900/40 text-purple-400';
       default: return 'border-stone-500 bg-stone-800 text-stone-300';
     }
+  };
+
+  const [isReady, setIsReady] = React.useState(false);
+
+  const handleNextWave = () => {
+    if (multiplayerTotalCount !== undefined) {
+      setIsReady(true);
+    }
+    onNextWave();
   };
 
   return (
@@ -194,10 +205,11 @@ export const Shop: React.FC<ShopProps> = ({
 
         <div className="flex justify-center">
           <button
-            onClick={onNextWave}
-            className="bg-green-500 text-stone-950 font-black text-3xl px-16 py-5 rounded-2xl border-4 border-b-8 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-1 transition-all shadow-2xl"
+            onClick={handleNextWave}
+            disabled={isReady}
+            className={`font-black text-3xl px-16 py-5 rounded-2xl border-4 border-b-8 transition-all shadow-2xl ${isReady ? 'bg-stone-600 text-stone-400 border-stone-800 cursor-not-allowed' : 'bg-green-500 text-stone-950 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-1'}`}
           >
-            NEXT WAVE
+            {multiplayerTotalCount !== undefined ? (isReady ? `WAITING FOR OTHERS (${multiplayerReadyCount}/${multiplayerTotalCount})` : `NEXT WAVE (${multiplayerReadyCount}/${multiplayerTotalCount})`) : 'NEXT WAVE'}
           </button>
         </div>
       </motion.div>

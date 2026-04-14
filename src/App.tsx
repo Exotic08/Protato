@@ -6,13 +6,15 @@ import { CharacterSelect } from './components/CharacterSelect';
 import { WeaponSelect } from './components/WeaponSelect';
 import { AuthUI } from './components/AuthUI';
 import { DisplayNameModal } from './components/DisplayNameModal';
-import { GameState, Stats, Weapon, Item, GameMode, Mission, Character } from './game/types';
+import { MultiplayerMenu } from './components/MultiplayerMenu';
+import { RoomLobby } from './components/RoomLobby';
+import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData } from './game/types';
 import { INITIAL_STATS, WEAPONS, XP_PER_LEVEL } from './game/constants';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize } from 'lucide-react';
+import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize, Users } from 'lucide-react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, update, remove, onDisconnect } from 'firebase/database';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,10 +28,16 @@ export default function App() {
   const [uiScale, setUiScale] = useState(100);
   const [userSetScale, setUserSetScale] = useState(false);
 
+  const [tempScale, setTempScale] = useState(100);
+
   const [gameState, setGameState] = useState<GameState>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('STANDARD');
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   
+  // Multiplayer State
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [roomData, setRoomData] = useState<RoomData | null>(null);
+
   // Global Stats for Unlocks
   const [globalStats, setGlobalStats] = useState({ totalKills: 0, maxWave: 0, totalMaterials: 0 });
 
@@ -90,6 +98,10 @@ export default function App() {
     return () => window.removeEventListener('resize', checkScale);
   }, [userSetScale]);
 
+  useEffect(() => {
+    setTempScale(uiScale);
+  }, [uiScale]);
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(e => console.error(e));
@@ -123,12 +135,121 @@ export default function App() {
     setGameState('CHARACTER_SELECT');
   };
 
+  const generateRoomCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    return code;
+  };
+
+  const handleCreateRoom = async () => {
+    if (!user || !displayName) return;
+    const newRoomId = generateRoomCode();
+    const roomRef = ref(db, `rooms/${newRoomId}`);
+    
+    const newRoom: RoomData = {
+      id: newRoomId,
+      host: user.uid,
+      mode: 'STANDARD',
+      state: 'LOBBY',
+      wave: 1,
+      players: {
+        [user.uid]: {
+          displayName: displayName,
+          isReady: false
+        }
+      }
+    };
+    
+    await set(roomRef, newRoom);
+    
+    // Set up disconnect hook to remove player from room
+    const playerRef = ref(db, `rooms/${newRoomId}/players/${user.uid}`);
+    onDisconnect(playerRef).remove();
+    
+    setRoomId(newRoomId);
+    setGameState('ROOM_LOBBY');
+  };
+
+  const handleJoinRoom = async (code: string) => {
+    if (!user || !displayName) return;
+    setRoomId(code);
+    
+    const playerRef = ref(db, `rooms/${code}/players/${user.uid}`);
+    await set(playerRef, {
+      displayName: displayName,
+      isReady: false
+    });
+    
+    onDisconnect(playerRef).remove();
+    setGameState('ROOM_LOBBY');
+  };
+
+  const handleLeaveRoom = async () => {
+    if (!user || !roomId) return;
+    const playerRef = ref(db, `rooms/${roomId}/players/${user.uid}`);
+    await remove(playerRef);
+    onDisconnect(playerRef).cancel();
+    setRoomId(null);
+    setRoomData(null);
+    setGameState('MENU');
+  };
+
+  const handleKickPlayer = async (uid: string) => {
+    if (!roomId) return;
+    const playerRef = ref(db, `rooms/${roomId}/players/${uid}`);
+    await remove(playerRef);
+  };
+
+  const handleStartMultiplayer = async () => {
+    if (!roomId) return;
+    await update(ref(db, `rooms/${roomId}`), { state: 'SELECTING' });
+  };
+
+  // Listen to room changes
+  useEffect(() => {
+    if (!roomId || !user) return;
+    const roomRef = ref(db, `rooms/${roomId}`);
+    const unsubscribe = onValue(roomRef, (snapshot) => {
+      const data = snapshot.val() as RoomData | null;
+      if (!data) {
+        // Room deleted or we were kicked
+        setRoomId(null);
+        setRoomData(null);
+        setGameState('MENU');
+        return;
+      }
+      
+      // If we are not in the players list, we were kicked
+      if (!data.players || !data.players[user.uid]) {
+        setRoomId(null);
+        setRoomData(null);
+        setGameState('MENU');
+        return;
+      }
+
+      setRoomData(data);
+      
+      // Handle state transitions driven by host
+      if (data.state === 'SELECTING' && gameState === 'ROOM_LOBBY') {
+        setGameState('CHARACTER_SELECT');
+      } else if (data.state === 'PLAYING' && (gameState === 'WEAPON_SELECT' || gameState === 'SHOP')) {
+        setWave(data.wave);
+        setGameState('PLAYING');
+      } else if (data.state === 'SHOP' && gameState === 'PLAYING') {
+        setGameState('SHOP');
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [roomId, user, gameState]);
+
   const handleCharacterSelect = (char: Character) => {
     setSelectedCharacter(char);
     setGameState('WEAPON_SELECT');
   };
 
-  const handleWeaponSelect = (weapon: Weapon) => {
+  const handleWeaponSelect = async (weapon: Weapon) => {
     setWave(1);
     setMaterials(0);
     setXp(0);
@@ -145,10 +266,48 @@ export default function App() {
     
     setWeapons([weapon]);
     setItems([]);
-    setGameState('PLAYING');
+
+    if (roomId && user) {
+      // Multiplayer: wait for others
+      await update(ref(db, `rooms/${roomId}/players/${user.uid}`), { isReady: true });
+      
+      // If host, check if everyone is ready to start PLAYING
+      if (roomData?.host === user.uid) {
+        // We need to check the latest data, but for simplicity we rely on the effect or a separate check
+        // Actually, let's just let the host check in a useEffect or here.
+        // A better way is a cloud function, but we'll do client-side host authority.
+      }
+    } else {
+      setGameState('PLAYING');
+    }
   };
 
-  const handleWaveEnd = useCallback((currentMaterials: number, currentXp: number, killsThisWave: number = 0) => {
+  // Host authority effect to transition states when everyone is ready
+  useEffect(() => {
+    if (!roomId || !roomData || !user || roomData.host !== user.uid) return;
+
+    const allReady = (Object.values(roomData.players || {}) as any[]).every(p => p.isReady);
+    
+    if (allReady) {
+      if (roomData.state === 'SELECTING') {
+        // Reset ready states and move to PLAYING
+        const updates: any = { state: 'PLAYING' };
+        Object.keys(roomData.players).forEach(uid => {
+          updates[`players/${uid}/isReady`] = false;
+        });
+        update(ref(db, `rooms/${roomId}`), updates);
+      } else if (roomData.state === 'SHOP') {
+        // Move to next wave
+        const updates: any = { state: 'PLAYING', wave: roomData.wave + 1 };
+        Object.keys(roomData.players).forEach(uid => {
+          updates[`players/${uid}/isReady`] = false;
+        });
+        update(ref(db, `rooms/${roomId}`), updates);
+      }
+    }
+  }, [roomData, roomId, user]);
+
+  const handleWaveEnd = useCallback(async (currentMaterials: number, currentXp: number, killsThisWave: number = 0) => {
     setMaterials(currentMaterials);
     setXp(currentXp);
     
@@ -174,8 +333,11 @@ export default function App() {
       setGameState('LEVEL_UP');
     } else {
       setGameState('SHOP');
+      if (roomId && user && roomData?.host === user.uid) {
+        update(ref(db, `rooms/${roomId}`), { state: 'SHOP' });
+      }
     }
-  }, [level]);
+  }, [level, globalStats, materials, wave, roomId, user, roomData]);
 
   const handleLevelUp = (stat: keyof Stats, value: number) => {
     setStats(prev => ({ ...prev, [stat]: prev[stat] + value }));
@@ -188,6 +350,9 @@ export default function App() {
           setGameState('LEVEL_UP');
         } else {
           setGameState('SHOP');
+          if (roomId && user && roomData?.host === user.uid) {
+            update(ref(db, `rooms/${roomId}`), { state: 'SHOP' });
+          }
         }
         return remainingXp;
       });
@@ -269,7 +434,7 @@ export default function App() {
         />
       )}
 
-      {user && !forceNameSetup && gameState === 'MENU' && (
+      {user && !forceNameSetup && (gameState === 'MENU' || gameState === 'PLAYING' || gameState === 'SHOP') && (
         <div className="absolute top-4 right-4 z-50">
           <button 
             onClick={() => setShowSettings(!showSettings)}
@@ -299,16 +464,21 @@ export default function App() {
                 <div className="mb-4 bg-stone-950 p-3 rounded-xl border-2 border-stone-800">
                   <label className="text-xs font-bold text-stone-500 uppercase mb-2 flex justify-between">
                     <span>UI Scale</span>
-                    <span className="text-amber-500">{uiScale}%</span>
+                    <span className="text-amber-500">{tempScale}%</span>
                   </label>
                   <input 
                     type="range" 
                     min="40" 
                     max="200" 
                     step="5"
-                    value={uiScale} 
-                    onChange={(e) => {
-                      setUiScale(Number(e.target.value));
+                    value={tempScale} 
+                    onChange={(e) => setTempScale(Number(e.target.value))}
+                    onMouseUp={() => {
+                      setUiScale(tempScale);
+                      setUserSetScale(true);
+                    }}
+                    onTouchEnd={() => {
+                      setUiScale(tempScale);
                       setUserSetScale(true);
                     }}
                     className="w-full accent-amber-500 mb-1"
@@ -324,12 +494,29 @@ export default function App() {
                   </button>
                 </div>
 
-                <button 
-                  onClick={() => { setShowSettings(false); setShowChangeName(true); }}
-                  className="w-full py-3 mb-2 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2"
-                >
-                  CHANGE NAME
-                </button>
+                {gameState === 'PLAYING' || gameState === 'SHOP' ? (
+                  <button 
+                    onClick={() => {
+                      if (roomId) {
+                        handleLeaveRoom();
+                      } else {
+                        setGameState('MENU');
+                      }
+                      setShowSettings(false);
+                    }}
+                    className="w-full py-3 mb-2 bg-red-500/10 text-red-500 font-black rounded-xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2"
+                  >
+                    QUIT RUN
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => { setShowSettings(false); setShowChangeName(true); }}
+                    className="w-full py-3 mb-2 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    CHANGE NAME
+                  </button>
+                )}
+                
                 <button 
                   onClick={handleSignOut}
                   className="w-full py-3 bg-red-500/10 text-red-500 font-black rounded-xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2"
@@ -351,8 +538,18 @@ export default function App() {
             exit={{ opacity: 0, y: -20 }}
             className="text-center w-full max-w-4xl mx-auto mt-20"
           >
-            <h1 className="text-8xl font-black mb-4 text-amber-500 drop-shadow-[0_6px_0_rgb(180,83,9)] tracking-wider">
-              POTATO SURVIVOR
+            <h1 className="text-8xl font-black mb-4 text-amber-500 drop-shadow-[0_6px_0_rgb(180,83,9)] tracking-wider flex items-center justify-center">
+              PR
+              <div className="w-16 h-16 bg-amber-600 rounded-full border-4 border-amber-900 relative shadow-inner overflow-hidden inline-block align-middle mx-2 mt-2">
+                <div className="absolute top-4 left-3 w-3 h-3 bg-white rounded-full"><div className="absolute top-1 left-1 w-1.5 h-1.5 bg-black rounded-full"></div></div>
+                <div className="absolute top-4 right-3 w-3 h-3 bg-white rounded-full"><div className="absolute top-1 left-1 w-1.5 h-1.5 bg-black rounded-full"></div></div>
+              </div>
+              TAT
+              <div className="w-16 h-16 bg-amber-600 rounded-full border-4 border-amber-900 relative shadow-inner overflow-hidden inline-block align-middle mx-2 mt-2">
+                <div className="absolute top-4 left-3 w-3 h-3 bg-white rounded-full"><div className="absolute top-1 left-1 w-1.5 h-1.5 bg-black rounded-full"></div></div>
+                <div className="absolute top-4 right-3 w-3 h-3 bg-white rounded-full"><div className="absolute top-1 left-1 w-1.5 h-1.5 bg-black rounded-full"></div></div>
+              </div>
+              &nbsp;SURVIVOR
             </h1>
             <p className="text-stone-400 text-2xl font-bold mb-12 uppercase tracking-widest">Survive the swarm. Build your arsenal.</p>
             
@@ -363,6 +560,14 @@ export default function App() {
               >
                 <span className="flex items-center justify-center gap-3">
                   <Play className="fill-current w-6 h-6" /> STANDARD RUN
+                </span>
+              </button>
+              <button 
+                onClick={() => setGameState('MULTIPLAYER_MENU')}
+                className="group relative px-8 py-5 bg-green-500 text-stone-950 font-black text-2xl rounded-2xl border-4 border-b-8 border-green-700 hover:bg-green-400 hover:border-green-600 active:border-b-4 active:translate-y-1 transition-all"
+              >
+                <span className="flex items-center justify-center gap-3">
+                  <Users className="w-6 h-6" /> MULTIPLAYER
                 </span>
               </button>
               <button 
@@ -383,6 +588,25 @@ export default function App() {
               </button>
             </div>
           </motion.div>
+        )}
+
+        {gameState === 'MULTIPLAYER_MENU' && (
+          <MultiplayerMenu 
+            onCreateRoom={handleCreateRoom}
+            onJoinRoom={handleJoinRoom}
+            onBack={() => setGameState('MENU')}
+          />
+        )}
+
+        {gameState === 'ROOM_LOBBY' && roomData && user && (
+          <RoomLobby 
+            room={roomData}
+            currentUserUid={user.uid}
+            onStart={handleStartMultiplayer}
+            onLeave={handleLeaveRoom}
+            onKick={handleKickPlayer}
+            onChangeMode={() => {}} // TODO
+          />
         )}
 
         {gameState === 'MODE_SELECT' && (
@@ -430,7 +654,16 @@ export default function App() {
 
         {gameState === 'WEAPON_SELECT' && (
           <motion.div key="weap_select" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <WeaponSelect onSelect={handleWeaponSelect} />
+            {roomId && roomData?.state === 'SELECTING' && (roomData.players[user?.uid || ''] as any)?.isReady ? (
+              <div className="text-center mt-40">
+                <h2 className="text-4xl font-black text-amber-500 mb-4">WAITING FOR OTHERS...</h2>
+                <p className="text-stone-400 text-xl font-bold uppercase">
+                  {(Object.values(roomData.players) as any[]).filter(p => p.isReady).length} / {Object.keys(roomData.players).length} READY
+                </p>
+              </div>
+            ) : (
+              <WeaponSelect onSelect={handleWeaponSelect} />
+            )}
           </motion.div>
         )}
 
@@ -471,6 +704,7 @@ export default function App() {
                 initialXp={xp}
                 initialLevel={level}
                 wave={wave}
+                roomId={roomId}
               />
             </div>
           </motion.div>
@@ -484,12 +718,18 @@ export default function App() {
             onBuyItem={handleBuyItem}
             onUpgradeWeapon={handleUpgradeWeapon}
             onReroll={handleReroll}
-            onNextWave={() => {
-              setWave(prev => prev + 1);
-              setGameState('PLAYING');
+            onNextWave={async () => {
+              if (roomId && user) {
+                await update(ref(db, `rooms/${roomId}/players/${user.uid}`), { isReady: true });
+              } else {
+                setWave(prev => prev + 1);
+                setGameState('PLAYING');
+              }
             }}
             currentWeapons={weapons}
             wave={wave}
+            multiplayerReadyCount={roomId && roomData ? (Object.values(roomData.players) as any[]).filter(p => p.isReady).length : undefined}
+            multiplayerTotalCount={roomId && roomData ? Object.keys(roomData.players).length : undefined}
           />
         )}
 

@@ -1,5 +1,21 @@
-export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT';
+export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT' | 'MULTIPLAYER_MENU' | 'JOIN_ROOM' | 'ROOM_LOBBY';
 export type GameMode = 'STANDARD' | 'ENDLESS' | 'MISSION';
+
+export interface RoomData {
+  id: string;
+  host: string;
+  mode: GameMode;
+  state: 'LOBBY' | 'SELECTING' | 'PLAYING' | 'SHOP' | 'GAME_OVER';
+  wave: number;
+  players: {
+    [uid: string]: {
+      displayName: string;
+      isReady: boolean;
+      character?: string;
+      dead?: boolean;
+    }
+  }
+}
 
 export interface Stats {
   maxHp: number;
