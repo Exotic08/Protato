@@ -1,0 +1,6 @@
+{
+  "name": "Potato Survivor",
+  "description": "A top-down arena shooter roguelite where you play a potato wielding up to 6 weapons at a time to fight off waves of aliens.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
