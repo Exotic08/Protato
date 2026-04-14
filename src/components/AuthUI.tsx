@@ -68,11 +68,11 @@ export const AuthUI: React.FC = () => {
         animate={{ scale: 1, opacity: 1 }}
         className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-8 max-w-md w-full shadow-2xl"
       >
-        <div className="text-center mb-8">
-          <h2 className="text-5xl font-black text-amber-500 drop-shadow-[0_4px_0_rgb(180,83,9)] mb-2">
+        <div className="text-center mb-6">
+          <h2 className="text-4xl font-black text-amber-500 drop-shadow-[0_4px_0_rgb(180,83,9)] mb-1">
             LOGIN
           </h2>
-          <p className="text-stone-400 font-bold uppercase">Enter the battleground</p>
+          <p className="text-stone-400 font-bold uppercase text-sm">Enter the battleground</p>
         </div>
 
         {error && (

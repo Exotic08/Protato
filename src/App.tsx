@@ -29,6 +29,7 @@ export default function App() {
   const [userSetScale, setUserSetScale] = useState(false);
 
   const [tempScale, setTempScale] = useState(100);
+  const [isPortrait, setIsPortrait] = useState(false);
 
   const [gameState, setGameState] = useState<GameState>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('STANDARD');
@@ -86,12 +87,21 @@ export default function App() {
     if (userSetScale) return;
     const checkScale = () => {
       const width = window.innerWidth;
-      // Base resolution we want to fit is roughly 1000px width.
-      if (width < 1000) {
-        setUiScale(Math.max(40, Math.floor((width / 1000) * 100)));
-      } else {
-        setUiScale(100);
-      }
+      const height = window.innerHeight;
+      setIsPortrait(height > width);
+
+      // Base resolution we want to fit is 1600x900 (16:9)
+      // We use slightly larger targets to ensure some padding
+      const targetWidth = 1680;
+      const targetHeight = 960;
+      
+      const scaleX = width / targetWidth;
+      const scaleY = height / targetHeight;
+      
+      // Use the smaller scale to ensure it fits both ways
+      const scale = Math.min(scaleX, scaleY);
+      
+      setUiScale(Math.max(20, Math.floor(scale * 100)));
     };
     checkScale();
     window.addEventListener('resize', checkScale);
@@ -122,6 +132,7 @@ export default function App() {
   const [materials, setMaterials] = useState(0);
   const [xp, setXp] = useState(0);
   const [level, setLevel] = useState(1);
+  const [cratesToOpen, setCratesToOpen] = useState(0);
   const [stats, setStats] = useState<Stats>(INITIAL_STATS);
   const [weapons, setWeapons] = useState<Weapon[]>([WEAPONS[0]]); // Start with a pistol
   const [items, setItems] = useState<Item[]>([]);
@@ -307,9 +318,10 @@ export default function App() {
     }
   }, [roomData, roomId, user]);
 
-  const handleWaveEnd = useCallback(async (currentMaterials: number, currentXp: number, killsThisWave: number = 0) => {
+  const handleWaveEnd = useCallback(async (currentMaterials: number, currentXp: number, killsThisWave: number = 0, crates: number = 0) => {
     setMaterials(currentMaterials);
     setXp(currentXp);
+    setCratesToOpen(crates);
     
     // Update global stats
     saveGlobalStats({
@@ -329,7 +341,9 @@ export default function App() {
       return m;
     }));
 
-    if (currentXp >= XP_PER_LEVEL(level)) {
+    if (crates > 0) {
+      setGameState('OPEN_CRATE');
+    } else if (currentXp >= XP_PER_LEVEL(level)) {
       setGameState('LEVEL_UP');
     } else {
       setGameState('SHOP');
@@ -374,15 +388,46 @@ export default function App() {
     });
   };
 
+  const handleSellWeapon = (index: number, price: number) => {
+    setMaterials(prev => prev + price);
+    setWeapons(prev => {
+      const newWeapons = [...prev];
+      newWeapons.splice(index, 1);
+      return newWeapons;
+    });
+  };
+
   const handleBuyItem = (item: Item) => {
-    setItems(prev => [...prev, item]);
+    handleAddItem(item);
     setMaterials(prev => prev - item.price);
+  };
+
+  const handleAddItem = (item: Item) => {
+    setItems(prev => [...prev, item]);
     setStats(prev => {
       const newStats = { ...prev };
       Object.entries(item.stats).forEach(([key, val]) => {
         (newStats as any)[key] += val;
       });
       return newStats;
+    });
+  };
+
+  const handleCrateOpened = (item: Item) => {
+    handleAddItem(item);
+    setCratesToOpen(prev => {
+      const next = prev - 1;
+      if (next <= 0) {
+        if (xp >= XP_PER_LEVEL(level)) {
+          setGameState('LEVEL_UP');
+        } else {
+          setGameState('SHOP');
+          if (roomId && user && roomData?.host === user.uid) {
+            update(ref(db, `rooms/${roomId}`), { state: 'SHOP' });
+          }
+        }
+      }
+      return next;
     });
   };
 
@@ -411,12 +456,111 @@ export default function App() {
         }} 
         className="relative flex flex-col items-center justify-center"
       >
-        <button 
-          onClick={toggleFullscreen} 
-          className="absolute top-4 left-4 z-50 p-3 bg-stone-800 text-stone-400 hover:text-stone-100 rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all"
-        >
-          {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
-        </button>
+        <div className="absolute top-6 right-6 z-50 flex gap-3">
+          <button 
+            onClick={toggleFullscreen} 
+            className="p-4 bg-stone-800/90 text-stone-400 hover:text-stone-100 rounded-2xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all shadow-xl backdrop-blur-sm"
+          >
+            {isFullscreen ? <Minimize className="w-8 h-8" /> : <Maximize className="w-8 h-8" />}
+          </button>
+
+          {user && !forceNameSetup && (gameState === 'MENU' || gameState === 'PLAYING' || gameState === 'SHOP') && (
+            <div className="relative">
+              <button 
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-4 bg-stone-800/90 text-stone-400 hover:text-stone-100 rounded-2xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all shadow-xl backdrop-blur-sm"
+              >
+                <Settings className="w-8 h-8" />
+              </button>
+              
+              <AnimatePresence>
+                {showSettings && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    className="absolute top-full right-0 mt-3 w-72 bg-stone-900 border-4 border-stone-800 rounded-3xl p-5 shadow-2xl z-[60]"
+                  >
+                    <div className="flex items-center gap-3 mb-4 pb-4 border-b-2 border-stone-800">
+                      <div className="w-12 h-12 rounded-full bg-stone-800 flex items-center justify-center text-stone-500">
+                        <UserIcon className="w-6 h-6" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-[10px] text-stone-500 font-black uppercase tracking-tighter">{user.email}</p>
+                        <p className="text-base font-black text-stone-300 truncate">{displayName || 'No Name'}</p>
+                      </div>
+                    </div>
+
+                    <div className="mb-4 bg-stone-950 p-4 rounded-2xl border-2 border-stone-800">
+                      <label className="text-xs font-black text-stone-500 uppercase mb-2 flex justify-between">
+                        <span>UI Scale</span>
+                        <span className="text-amber-500">{tempScale}%</span>
+                      </label>
+                      <input 
+                        type="range" 
+                        min="40" 
+                        max="200" 
+                        step="5"
+                        value={tempScale} 
+                        onChange={(e) => setTempScale(Number(e.target.value))}
+                        onMouseUp={() => {
+                          setUiScale(tempScale);
+                          setUserSetScale(true);
+                        }}
+                        onTouchEnd={() => {
+                          setUiScale(tempScale);
+                          setUserSetScale(true);
+                        }}
+                        className="w-full accent-amber-500 mb-1"
+                      />
+                      <button 
+                        onClick={() => {
+                          setUserSetScale(false);
+                          window.dispatchEvent(new Event('resize'));
+                        }}
+                        className="text-[10px] text-stone-500 hover:text-stone-300 uppercase font-black w-full text-center mt-1"
+                      >
+                        Reset to Auto
+                      </button>
+                    </div>
+
+                    {gameState === 'PLAYING' || gameState === 'SHOP' ? (
+                      <button 
+                        onClick={() => {
+                          if (roomId) {
+                            handleLeaveRoom();
+                          } else {
+                            setGameState('MENU');
+                          }
+                          setShowSettings(false);
+                        }}
+                        className="w-full py-4 mb-2 bg-red-500/10 text-red-500 font-black rounded-2xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2 uppercase"
+                      >
+                        QUIT RUN
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => { setShowSettings(false); setShowChangeName(true); }}
+                        className="w-full py-4 mb-2 bg-stone-800 text-stone-100 font-black rounded-2xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2 uppercase"
+                      >
+                        CHANGE NAME
+                      </button>
+                    )}
+                    
+                    {gameState !== 'PLAYING' && gameState !== 'SHOP' && (
+                      <button 
+                        onClick={handleSignOut}
+                        className="w-full py-4 bg-red-500/10 text-red-500 font-black rounded-2xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2 uppercase"
+                      >
+                        <LogOut className="w-4 h-4" /> SIGN OUT
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
 
         {!user && <AuthUI />}
 
@@ -432,101 +576,6 @@ export default function App() {
           currentName={displayName} 
           onClose={() => setShowChangeName(false)} 
         />
-      )}
-
-      {user && !forceNameSetup && (gameState === 'MENU' || gameState === 'PLAYING' || gameState === 'SHOP') && (
-        <div className="absolute top-4 right-4 z-50">
-          <button 
-            onClick={() => setShowSettings(!showSettings)}
-            className="p-3 bg-stone-800 text-stone-400 hover:text-stone-100 rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all"
-          >
-            <Settings className="w-6 h-6" />
-          </button>
-          
-          <AnimatePresence>
-            {showSettings && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className="absolute top-full right-0 mt-2 w-64 bg-stone-900 border-4 border-stone-800 rounded-2xl p-4 shadow-2xl"
-              >
-                <div className="flex items-center gap-3 mb-4 pb-4 border-b-2 border-stone-800">
-                  <div className="w-10 h-10 rounded-full bg-stone-800 flex items-center justify-center text-stone-500">
-                    <UserIcon className="w-5 h-5" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-xs text-stone-500 font-bold uppercase">{user.email}</p>
-                    <p className="text-sm font-black text-stone-300 truncate">{displayName || 'No Name'}</p>
-                  </div>
-                </div>
-
-                <div className="mb-4 bg-stone-950 p-3 rounded-xl border-2 border-stone-800">
-                  <label className="text-xs font-bold text-stone-500 uppercase mb-2 flex justify-between">
-                    <span>UI Scale</span>
-                    <span className="text-amber-500">{tempScale}%</span>
-                  </label>
-                  <input 
-                    type="range" 
-                    min="40" 
-                    max="200" 
-                    step="5"
-                    value={tempScale} 
-                    onChange={(e) => setTempScale(Number(e.target.value))}
-                    onMouseUp={() => {
-                      setUiScale(tempScale);
-                      setUserSetScale(true);
-                    }}
-                    onTouchEnd={() => {
-                      setUiScale(tempScale);
-                      setUserSetScale(true);
-                    }}
-                    className="w-full accent-amber-500 mb-1"
-                  />
-                  <button 
-                    onClick={() => {
-                      setUserSetScale(false);
-                      window.dispatchEvent(new Event('resize'));
-                    }}
-                    className="text-[10px] text-stone-500 hover:text-stone-300 uppercase font-bold w-full text-center"
-                  >
-                    Reset to Auto
-                  </button>
-                </div>
-
-                {gameState === 'PLAYING' || gameState === 'SHOP' ? (
-                  <button 
-                    onClick={() => {
-                      if (roomId) {
-                        handleLeaveRoom();
-                      } else {
-                        setGameState('MENU');
-                      }
-                      setShowSettings(false);
-                    }}
-                    className="w-full py-3 mb-2 bg-red-500/10 text-red-500 font-black rounded-xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2"
-                  >
-                    QUIT RUN
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => { setShowSettings(false); setShowChangeName(true); }}
-                    className="w-full py-3 mb-2 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2"
-                  >
-                    CHANGE NAME
-                  </button>
-                )}
-                
-                <button 
-                  onClick={handleSignOut}
-                  className="w-full py-3 bg-red-500/10 text-red-500 font-black rounded-xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2"
-                >
-                  <LogOut className="w-4 h-4" /> SIGN OUT
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
       )}
 
       <AnimatePresence mode="wait">
@@ -672,41 +721,21 @@ export default function App() {
             key="playing"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="w-full h-full flex flex-col"
+            className="w-full h-full relative"
           >
-            <div className="p-4 bg-stone-900 border-b-4 border-stone-800 flex justify-between items-center shadow-lg z-10">
-              <div className="flex gap-8">
-                <div className="bg-stone-950 px-4 py-2 rounded-xl border-2 border-stone-800">
-                  <span className="text-stone-500 text-xs uppercase font-bold tracking-widest block mb-1">Wave</span>
-                  <div className="text-3xl font-black text-stone-100 leading-none">{wave} {gameMode === 'ENDLESS' && '∞'}</div>
-                </div>
-                <div className="bg-stone-950 px-4 py-2 rounded-xl border-2 border-stone-800">
-                  <span className="text-stone-500 text-xs uppercase font-bold tracking-widest block mb-1">Materials</span>
-                  <div className="text-3xl font-black text-green-400 leading-none">{materials}</div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {weapons.map((w, i) => (
-                  <div key={i} className="w-12 h-12 bg-stone-800 rounded-xl border-2 border-stone-700 flex items-center justify-center text-stone-400 shadow-inner">
-                    <span className="text-[10px] font-bold uppercase">{w.name.split(' ')[0]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 relative">
-              <GameCanvas 
-                gameState={gameState}
-                onWaveEnd={handleWaveEnd}
-                onGameOver={() => setGameState('GAME_OVER')}
-                playerStats={stats}
-                playerWeapons={weapons}
-                initialMaterials={materials}
-                initialXp={xp}
-                initialLevel={level}
-                wave={wave}
-                roomId={roomId}
-              />
-            </div>
+            <GameCanvas 
+              gameState={gameState}
+              onWaveEnd={handleWaveEnd}
+              onGameOver={() => setGameState('GAME_OVER')}
+              playerStats={stats}
+              playerWeapons={weapons}
+              initialMaterials={materials}
+              initialXp={xp}
+              initialLevel={level}
+              wave={wave}
+              roomId={roomId}
+              uiScale={uiScale}
+            />
           </motion.div>
         )}
 
@@ -717,6 +746,7 @@ export default function App() {
             onBuyWeapon={handleBuyWeapon}
             onBuyItem={handleBuyItem}
             onUpgradeWeapon={handleUpgradeWeapon}
+            onSellWeapon={handleSellWeapon}
             onReroll={handleReroll}
             onNextWave={async () => {
               if (roomId && user) {
@@ -759,6 +789,15 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Orientation Warning */}
+      {isPortrait && (
+        <div className="fixed inset-0 bg-stone-950 z-[100] flex flex-col items-center justify-center p-8 text-center">
+          <RotateCcw className="w-24 h-24 text-amber-500 mb-6 animate-spin-slow" />
+          <h2 className="text-4xl font-black text-white mb-4 uppercase">Please Rotate Your Device</h2>
+          <p className="text-stone-400 text-xl font-bold uppercase">This game is best played in landscape mode.</p>
+        </div>
+      )}
       </div>
     </div>
   );

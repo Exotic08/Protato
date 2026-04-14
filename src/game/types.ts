@@ -1,4 +1,4 @@
-export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT' | 'MULTIPLAYER_MENU' | 'JOIN_ROOM' | 'ROOM_LOBBY';
+export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT' | 'MULTIPLAYER_MENU' | 'JOIN_ROOM' | 'ROOM_LOBBY' | 'OPEN_CRATE';
 export type GameMode = 'STANDARD' | 'ENDLESS' | 'MISSION';
 
 export interface RoomData {
@@ -93,7 +93,7 @@ export interface Player extends Entity {
   items: Item[];
 }
 
-export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2';
+export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN';
 
 export interface Enemy extends Entity {
   speed: number;
@@ -120,6 +120,13 @@ export interface Material {
   x: number;
   y: number;
   value: number;
+  radius: number;
+}
+
+export interface LootCrate {
+  x: number;
+  y: number;
+  id: string;
   radius: number;
 }
 

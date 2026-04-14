@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Player, Enemy, Projectile, Material, FloatingText, GameState, Stats, Weapon, EnemyType } from '../game/types';
-import { INITIAL_STATS, WAVE_DURATION, XP_PER_LEVEL } from '../game/constants';
+import { INITIAL_STATS, WAVE_DURATION, XP_PER_LEVEL, MAP_WIDTH, MAP_HEIGHT, GRID_SIZE_X, GRID_SIZE_Y } from '../game/constants';
 import { Joystick } from './Joystick';
 import { io, Socket } from 'socket.io-client';
 
@@ -8,7 +8,7 @@ const MULTIPLAYER_SERVER = 'https://protato-production.up.railway.app';
 
 interface GameCanvasProps {
   gameState: GameState;
-  onWaveEnd: (materials: number, xp: number) => void;
+  onWaveEnd: (materials: number, xp: number, kills: number, crates: number) => void;
   onGameOver: () => void;
   playerStats: Stats;
   playerWeapons: Weapon[];
@@ -16,6 +16,8 @@ interface GameCanvasProps {
   initialXp: number;
   initialLevel: number;
   wave: number;
+  roomId?: string | null;
+  uiScale: number;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -28,6 +30,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   initialXp,
   initialLevel,
   wave,
+  roomId,
+  uiScale,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [timer, setTimer] = useState(WAVE_DURATION);
@@ -36,8 +40,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   
   // Game state refs to avoid closure issues in the loop
   const playerRef = useRef<Player>({
-    x: 400,
-    y: 300,
+    x: MAP_WIDTH / 2,
+    y: MAP_HEIGHT / 2,
     radius: 15,
     hp: playerStats.maxHp,
     maxHp: playerStats.maxHp,
@@ -53,6 +57,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const projectilesRef = useRef<Projectile[]>([]);
   const materialsRef = useRef<Material[]>([]);
   const floatingTextsRef = useRef<FloatingText[]>([]);
+  const cratesRef = useRef<number>(0);
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const lastTimeRef = useRef<number>(0);
   const spawnTimerRef = useRef<number>(0);
@@ -164,8 +169,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Keep player in bounds
-      player.x = Math.max(player.radius, Math.min(800 - player.radius, player.x));
-      player.y = Math.max(player.radius, Math.min(600 - player.radius, player.y));
+      player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
+      player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
 
       // Emit movement to server
       if (socketRef.current && (dx !== 0 || dy !== 0)) {
@@ -175,7 +180,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // 2. Wave Timer
       waveTimerRef.current -= deltaTime;
       if (waveTimerRef.current <= 0) {
-        onWaveEnd(player.materials, player.xp, killsRef.current);
+        onWaveEnd(player.materials, player.xp, killsRef.current, cratesRef.current);
         return;
       }
       if (Math.ceil(waveTimerRef.current) !== timer) {
@@ -193,10 +198,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         spawnTimerRef.current = 0;
         const side = Math.floor(Math.random() * 4);
         let ex = 0, ey = 0;
-        if (side === 0) { ex = Math.random() * 800; ey = -20; }
-        else if (side === 1) { ex = 820; ey = Math.random() * 600; }
-        else if (side === 2) { ex = Math.random() * 800; ey = 620; }
-        else { ex = -20; ey = Math.random() * 600; }
+        if (side === 0) { ex = Math.random() * MAP_WIDTH; ey = -20; }
+        else if (side === 1) { ex = MAP_WIDTH + 20; ey = Math.random() * MAP_HEIGHT; }
+        else if (side === 2) { ex = Math.random() * MAP_WIDTH; ey = MAP_HEIGHT + 20; }
+        else { ex = -20; ey = Math.random() * MAP_HEIGHT; }
 
         // Determine enemy type based on wave
         let type: EnemyType = 'BASIC';
@@ -206,6 +211,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (wave >= 5 && rand < 0.15) type = 'TANK';
         if (wave >= 7 && rand < 0.2) type = 'RANGED';
         if (wave >= 9 && rand < 0.25) type = 'EXPLOSIVE';
+        if (rand < 0.02) type = 'LOOT_GOBLIN'; // 2% chance to spawn a loot goblin
 
         // Scale stats per wave
         const difficultyScale = 1 + (wave - 1) * 0.15;
@@ -220,6 +226,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           case 'TANK': speed = 0.7; hp *= 3.0; color = '#7f1d1d'; radius = 18; break;
           case 'RANGED': speed = 1.0; hp *= 0.8; color = '#8b5cf6'; radius = 12; break;
           case 'EXPLOSIVE': speed = 2.2; hp *= 0.6; color = '#fbbf24'; radius = 14; break;
+          case 'LOOT_GOBLIN': speed = 2.5; hp *= 2.0; color = '#10b981'; radius = 15; damage = 0; break;
         }
 
         enemiesRef.current.push({
@@ -243,7 +250,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (!enemiesRef.current.some(e => e.type === bossType)) {
           const bossHp = (isMajorBoss ? 1000 : 400) * (1 + (wave / 10));
           enemiesRef.current.push({
-            x: 400, y: -50, 
+            x: MAP_WIDTH / 2, y: -50, 
             radius: isMajorBoss ? 50 : 40, 
             hp: bossHp, maxHp: bossHp, 
             speed: 0.4, damage: 5 * (1 + wave/10), 
@@ -407,18 +414,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (hit) return false;
         }
 
-        return p.life > 0 && p.x > 0 && p.x < 800 && p.y > 0 && p.y < 600;
+        return p.life > 0 && p.x > 0 && p.x < MAP_WIDTH && p.y > 0 && p.y < MAP_HEIGHT;
       });
 
       // 7. Enemy Death & Materials
       enemiesRef.current = enemiesRef.current.filter(enemy => {
         if (enemy.hp <= 0) {
           killsRef.current += 1;
+          
+          if (enemy.type === 'LOOT_GOBLIN' || enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2') {
+            cratesRef.current += 1;
+            floatingTextsRef.current.push({
+              x: enemy.x, y: enemy.y, text: 'CRATE DROPPED!', color: '#10b981', life: 60
+            });
+          }
+
           materialsRef.current.push({
             x: enemy.x,
             y: enemy.y,
-            value: 1,
-            radius: 5,
+            value: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 50 : (enemy.type === 'LOOT_GOBLIN' ? 20 : 1),
+            radius: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 15 : 5,
           });
           return false;
         }
@@ -452,7 +467,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     const draw = (ctx: CanvasRenderingContext2D) => {
-      ctx.clearRect(0, 0, 800, 600);
+      ctx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
       
       ctx.save();
       if (shakeRef.current > 0) {
@@ -463,15 +478,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Background grid
       ctx.fillStyle = '#292524'; // stone-900
-      ctx.fillRect(0, 0, 800, 600);
+      ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
       
       ctx.strokeStyle = '#44403c'; // stone-700
       ctx.lineWidth = 2;
-      for (let i = 0; i < 800; i += 50) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 600); ctx.stroke();
+      for (let i = 0; i <= MAP_WIDTH; i += GRID_SIZE_X) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, MAP_HEIGHT); ctx.stroke();
       }
-      for (let i = 0; i < 600; i += 50) {
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(800, i); ctx.stroke();
+      for (let i = 0; i <= MAP_HEIGHT; i += GRID_SIZE_Y) {
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(MAP_WIDTH, i); ctx.stroke();
       }
 
       const player = playerRef.current;
@@ -681,15 +696,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     <div className="relative w-full h-full flex items-center justify-center bg-slate-900 overflow-hidden">
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
+        width={MAP_WIDTH}
+        height={MAP_HEIGHT}
         className="bg-slate-800 rounded-lg shadow-2xl border-4 border-slate-700"
       />
       
       {/* HUD */}
       <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
+        <div className="bg-black/50 p-2 rounded border border-white/10 text-amber-500 font-mono font-bold">
+          WAVE: {wave}
+        </div>
         <div className="bg-black/50 p-2 rounded border border-white/10 text-white font-mono">
-          WAVE TIMER: {timer}s
+          TIME: {timer}s
         </div>
         <div className="bg-black/50 p-2 rounded border border-white/10 text-green-400 font-mono">
           MATERIALS: {materialsCount}
@@ -697,6 +715,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className="bg-black/50 p-2 rounded border border-white/10 text-blue-400 font-mono">
           LEVEL: {playerRef.current.level}
         </div>
+      </div>
+
+      {/* Weapons HUD */}
+      <div className="absolute top-4 right-16 flex gap-2 pointer-events-none">
+        {playerWeapons.map((w, i) => (
+          <div key={i} className="w-10 h-10 bg-black/50 rounded-lg border border-white/10 flex items-center justify-center text-[8px] text-stone-400 font-bold uppercase text-center p-1">
+            {w.name.split(' ')[0]}
+          </div>
+        ))}
       </div>
 
       {/* XP Bar */}
@@ -708,7 +735,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       </div>
 
       {isTouch && (
-        <Joystick onChange={(v) => { joystickRef.current = v; }} />
+        <Joystick onChange={(v) => { joystickRef.current = v; }} uiScale={uiScale} />
       )}
     </div>
   );

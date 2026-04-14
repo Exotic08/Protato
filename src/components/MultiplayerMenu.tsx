@@ -16,7 +16,7 @@ export const MultiplayerMenu: React.FC<MultiplayerMenuProps> = ({ onCreateRoom, 
     <motion.div 
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-md w-full mx-auto mt-20 shadow-2xl"
+      className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-md w-full mx-auto shadow-2xl"
     >
       <div className="flex items-center gap-4 mb-8">
         <button 

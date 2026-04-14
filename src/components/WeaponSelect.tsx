@@ -17,11 +17,11 @@ export const WeaponSelect: React.FC<WeaponSelectProps> = ({ onSelect }) => {
   const startingWeapons = WEAPONS.filter(w => w.rarity === 1);
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-8 mt-10">
+    <div className="w-full max-w-4xl mx-auto p-8">
       <h2 className="text-6xl font-black text-center mb-12 text-blue-400 drop-shadow-[0_4px_0_rgb(30,58,138)]">
         SELECT STARTING WEAPON
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {startingWeapons.map(weapon => {
           const Icon = ICON_MAP[weapon.icon] || Sword;
           

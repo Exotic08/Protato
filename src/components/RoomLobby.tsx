@@ -20,7 +20,7 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({ room, currentUserUid, onSt
     <motion.div 
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-2xl w-full mx-auto mt-10 shadow-2xl"
+      className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-2xl w-full mx-auto shadow-2xl"
     >
       <div className="flex justify-between items-start mb-8">
         <div className="flex items-center gap-4">

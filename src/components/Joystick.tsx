@@ -2,9 +2,10 @@ import React, { useState, useRef } from 'react';
 
 interface JoystickProps {
   onChange: (vector: { x: number; y: number }) => void;
+  uiScale: number;
 }
 
-export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
+export const Joystick: React.FC<JoystickProps> = ({ onChange, uiScale }) => {
   const baseRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -43,7 +44,8 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
       dy = (dy / distance) * maxRadius;
     }
 
-    setPosition({ x: dx, y: dy });
+    const scale = uiScale / 100;
+    setPosition({ x: dx / scale, y: dy / scale });
     onChange({ x: dx / maxRadius, y: dy / maxRadius });
   };
 
@@ -51,14 +53,14 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
     <div 
       className="fixed bottom-12 left-12 w-32 h-32 bg-stone-900/80 border-4 border-stone-700 rounded-full touch-none z-50 shadow-2xl" 
       ref={baseRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <div 
-        className="absolute top-1/2 left-1/2 w-16 h-16 bg-stone-400 border-4 border-b-8 border-stone-600 rounded-full cursor-pointer shadow-lg active:border-b-4 active:translate-y-1 transition-transform duration-75"
+        className="absolute top-1/2 left-1/2 w-16 h-16 bg-stone-400 border-4 border-b-8 border-stone-600 rounded-full cursor-pointer shadow-lg pointer-events-none transition-transform duration-75"
         style={{ transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))` }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
       />
     </div>
   );

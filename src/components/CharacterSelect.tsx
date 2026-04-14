@@ -26,11 +26,11 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({ onSelect, glob
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-8 mt-10">
+    <div className="w-full max-w-5xl mx-auto p-8">
       <h2 className="text-6xl font-black text-center mb-12 text-amber-500 drop-shadow-[0_4px_0_rgb(180,83,9)]">
         SELECT CHARACTER
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
         {CHARACTERS.map(char => {
           const unlocked = isUnlocked(char);
           const Icon = ICON_MAP[char.icon] || Smile;

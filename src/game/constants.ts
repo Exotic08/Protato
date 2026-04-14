@@ -78,6 +78,10 @@ export const ITEMS: Item[] = [
 
 export const WAVE_DURATION = 20; // seconds
 export const XP_PER_LEVEL = (level: number) => 5 + level * 10;
+export const MAP_WIDTH = 1600;
+export const MAP_HEIGHT = 900;
+export const GRID_SIZE_X = MAP_WIDTH / 50; // 32px
+export const GRID_SIZE_Y = MAP_HEIGHT / 30; // 30px
 
 export const getNextTier = (weapon: Weapon): Weapon | null => {
   return WEAPONS.find(w => w.baseId === weapon.baseId && w.rarity === weapon.rarity + 1) || null;

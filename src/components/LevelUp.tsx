@@ -29,26 +29,26 @@ export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat }) => {
       <motion.div 
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-8 max-w-2xl w-full shadow-2xl text-center"
+        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-6 max-w-2xl w-full shadow-2xl text-center"
       >
-        <h2 className="text-6xl font-black text-blue-400 mb-2 flex items-center justify-center gap-4 drop-shadow-[0_4px_0_rgb(30,58,138)]">
-          <TrendingUp className="w-16 h-16" />
+        <h2 className="text-4xl font-black text-blue-400 mb-1 flex items-center justify-center gap-4 drop-shadow-[0_4px_0_rgb(30,58,138)]">
+          <TrendingUp className="w-10 h-10" />
           LEVEL UP!
         </h2>
-        <p className="text-stone-400 mb-8 text-2xl font-bold uppercase">Choose a stat to upgrade</p>
+        <p className="text-stone-400 mb-6 text-xl font-bold uppercase">Choose a stat to upgrade</p>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-row gap-4 justify-center">
           {options.map((opt, i) => (
             <motion.button
               key={i}
-              whileHover={{ y: -4 }}
+              whileHover={{ y: -8 }}
               onClick={() => onSelectStat(opt.stat, opt.value)}
-              className="bg-stone-800 border-4 border-b-8 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-6 rounded-2xl flex items-center gap-6 transition-all text-left active:border-b-4 active:translate-y-1"
+              className="bg-stone-800 border-4 border-b-8 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-6 rounded-3xl flex flex-col items-center gap-4 transition-all text-center active:border-b-4 active:translate-y-1 flex-1 max-w-[240px]"
             >
               <div className={`p-4 rounded-2xl bg-stone-950 border-2 border-stone-800 shadow-inner ${opt.color}`}>
-                <opt.icon className="w-10 h-10" />
+                <opt.icon className="w-12 h-12" />
               </div>
-              <span className="text-3xl font-black text-stone-100 uppercase">{opt.name}</span>
+              <span className="text-xl font-black text-stone-100 uppercase leading-tight">{opt.name}</span>
             </motion.button>
           ))}
         </div>
