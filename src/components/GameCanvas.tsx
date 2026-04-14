@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Player, Enemy, Projectile, Material, FloatingText, GameState, Stats, Weapon, EnemyType } from '../game/types';
 import { INITIAL_STATS, WAVE_DURATION, XP_PER_LEVEL } from '../game/constants';
 import { Joystick } from './Joystick';
+import { io, Socket } from 'socket.io-client';
+
+const MULTIPLAYER_SERVER = 'https://protato-production.up.railway.app';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -58,11 +61,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const shakeRef = useRef<number>(0);
   const killsRef = useRef<number>(0);
   const joystickRef = useRef({ x: 0, y: 0 });
+  const socketRef = useRef<Socket | null>(null);
+  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, id: string } }>({});
   const [isTouch, setIsTouch] = useState(false);
 
   useEffect(() => {
     setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
     
+    // Initialize Socket.io
+    socketRef.current = io(MULTIPLAYER_SERVER);
+
+    socketRef.current.on('currentPlayers', (players) => {
+      otherPlayersRef.current = players;
+    });
+
+    socketRef.current.on('newPlayer', (player) => {
+      otherPlayersRef.current[player.id] = player;
+    });
+
+    socketRef.current.on('playerMoved', (player) => {
+      otherPlayersRef.current[player.id] = player;
+    });
+
+    socketRef.current.on('playerDisconnected', (id) => {
+      delete otherPlayersRef.current[id];
+    });
+
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = true;
     };
@@ -75,6 +99,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      socketRef.current?.disconnect();
     };
   }, []);
 
@@ -141,6 +166,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Keep player in bounds
       player.x = Math.max(player.radius, Math.min(800 - player.radius, player.x));
       player.y = Math.max(player.radius, Math.min(600 - player.radius, player.y));
+
+      // Emit movement to server
+      if (socketRef.current && (dx !== 0 || dy !== 0)) {
+        socketRef.current.emit('playerMovement', { x: player.x, y: player.y });
+      }
 
       // 2. Wave Timer
       waveTimerRef.current -= deltaTime;
@@ -445,6 +475,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       const player = playerRef.current;
+
+      // Draw Other Players
+      (Object.values(otherPlayersRef.current) as any[]).forEach(p => {
+        if (p.id === socketRef.current?.id) return;
+        
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#92400e'; // darker amber
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, player.radius, player.radius + 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#451a03';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Simple eyes for other players
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(p.x - 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x + 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+        
+        ctx.restore();
+      });
 
       // Draw Materials
       materialsRef.current.forEach(m => {
