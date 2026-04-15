@@ -450,9 +450,11 @@ export default function App() {
     <div className="fixed inset-0 bg-stone-950 text-stone-50 overflow-hidden font-sans selection:bg-amber-500/30 flex items-center justify-center">
       <div 
         style={{ 
+          width: 1680,
+          height: 960,
           transform: `scale(${scaleFactor})`, 
-          width: `${100 / scaleFactor}vw`,
-          height: `${100 / scaleFactor}vh`,
+          transformOrigin: 'center',
+          flexShrink: 0
         }} 
         className="relative flex flex-col items-center justify-center"
       >
