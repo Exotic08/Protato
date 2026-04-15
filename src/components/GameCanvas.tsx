@@ -72,8 +72,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const killsRef = useRef<number>(0);
   const joystickRef = useRef({ x: 0, y: 0 });
   const socketRef = useRef<Socket | null>(null);
-  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, id: string, name?: string } }>({});
+  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, targetX: number, targetY: number, id: string, name?: string } }>({});
+  const enemiesTargetRef = useRef<{ [id: string]: Enemy }>({});
+  const lastEmitTimeRef = useRef<number>(0);
+  const lastSyncTimeRef = useRef<number>(0);
+  const lastIsMovingRef = useRef<boolean>(false);
   const [isTouch, setIsTouch] = useState(false);
+  const [ping, setPing] = useState<number>(0);
 
   useEffect(() => {
     setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -85,29 +90,64 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     
     socketRef.current = io(socketUrl);
 
+    // Ping logic
+    const pingInterval = setInterval(() => {
+      const start = Date.now();
+      socketRef.current?.emit('ping', () => {
+        setPing(Date.now() - start);
+      });
+    }, 2000);
+
     if (roomId) {
       socketRef.current.emit('joinRoom', { roomId, name: displayName });
     }
 
     socketRef.current.on('currentPlayers', (players) => {
-      otherPlayersRef.current = players;
+      const playersWithTargets: any = {};
+      Object.keys(players).forEach(id => {
+        playersWithTargets[id] = { ...players[id], targetX: players[id].x, targetY: players[id].y };
+      });
+      otherPlayersRef.current = playersWithTargets;
     });
 
     socketRef.current.on('newPlayer', (player) => {
-      otherPlayersRef.current[player.id] = player;
+      otherPlayersRef.current[player.id] = { ...player, targetX: player.x, targetY: player.y };
     });
 
     socketRef.current.on('playerMoved', (player) => {
-      otherPlayersRef.current[player.id] = player;
+      if (!otherPlayersRef.current[player.id]) {
+        otherPlayersRef.current[player.id] = { ...player, targetX: player.x, targetY: player.y };
+      } else {
+        otherPlayersRef.current[player.id].targetX = player.x;
+        otherPlayersRef.current[player.id].targetY = player.y;
+        otherPlayersRef.current[player.id].name = player.name;
+      }
     });
 
     socketRef.current.on('playerDisconnected', (id) => {
       delete otherPlayersRef.current[id];
     });
 
-    socketRef.current.on('enemiesUpdate', (enemies) => {
+    socketRef.current.on('enemiesUpdate', (enemies: Enemy[]) => {
       if (!isHost) {
-        enemiesRef.current = enemies;
+        const newTargetMap: { [id: string]: Enemy } = {};
+        enemies.forEach(e => {
+          newTargetMap[e.id] = e;
+          
+          const existing = enemiesRef.current.find(curr => curr.id === e.id);
+          if (!existing) {
+            enemiesRef.current.push({ ...e });
+          } else {
+            // Update non-positional stats directly
+            existing.hp = e.hp;
+            existing.type = e.type;
+            existing.color = e.color;
+            existing.radius = e.radius;
+          }
+        });
+        
+        enemiesRef.current = enemiesRef.current.filter(curr => newTargetMap[curr.id]);
+        enemiesTargetRef.current = newTargetMap;
       }
     });
 
@@ -160,6 +200,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      clearInterval(pingInterval);
       socketRef.current?.disconnect();
     };
   }, []);
@@ -201,6 +242,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (shakeRef.current < 0) shakeRef.current = 0;
       }
 
+      // Interpolate other players
+      (Object.values(otherPlayersRef.current) as any[]).forEach(p => {
+        p.x += (p.targetX - p.x) * 0.15;
+        p.y += (p.targetY - p.y) * 0.15;
+      });
+
+      // Interpolate enemies if not host
+      if (!isHost) {
+        enemiesRef.current.forEach(enemy => {
+          const target = enemiesTargetRef.current[enemy.id];
+          if (target) {
+            enemy.x += (target.x - enemy.x) * 0.15;
+            enemy.y += (target.y - enemy.y) * 0.15;
+          }
+        });
+      }
+
       // 1. Player Movement
       let dx = 0;
       let dy = 0;
@@ -228,9 +286,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
       player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
 
-      // Emit movement to server
-      if (socketRef.current && (dx !== 0 || dy !== 0)) {
-        socketRef.current.emit('playerMovement', { x: player.x, y: player.y, roomId, name: displayName });
+      // Emit movement to server (Throttled ~30fps)
+      const now = Date.now();
+      const isMoving = dx !== 0 || dy !== 0;
+      if (socketRef.current && (isMoving || lastIsMovingRef.current) && now - lastEmitTimeRef.current > 33) {
+        socketRef.current.emit('playerMovement', { 
+          x: Math.round(player.x), 
+          y: Math.round(player.y), 
+          roomId, 
+          name: displayName 
+        });
+        lastEmitTimeRef.current = now;
+        lastIsMovingRef.current = isMoving;
       }
 
       // 2. Wave Timer
@@ -287,6 +354,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
 
           enemiesRef.current.push({
+            id: Math.random().toString(36).substr(2, 9),
             x: ex,
             y: ey,
             radius,
@@ -307,6 +375,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (!enemiesRef.current.some(e => e.type === bossType)) {
             const bossHp = (isMajorBoss ? 1000 : 400) * (1 + (wave / 10));
             enemiesRef.current.push({
+              id: bossType + '_' + wave,
               x: MAP_WIDTH / 2, y: -50, 
               radius: isMajorBoss ? 50 : 40, 
               hp: bossHp, maxHp: bossHp, 
@@ -369,6 +438,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               // Spawn minions
               for (let i = 0; i < 4; i++) {
                 enemiesRef.current.push({
+                  id: 'minion_' + Math.random().toString(36).substr(2, 5),
                   x: enemy.x + (Math.random() - 0.5) * 100,
                   y: enemy.y + (Math.random() - 0.5) * 100,
                   radius: 10, hp: 10, maxHp: 10, speed: 2, damage: 1, type: 'BASIC', color: '#ef4444'
@@ -549,10 +619,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         return t.life > 0;
       });
 
-      // Sync state if host
-      if (isHost && roomId && socketRef.current) {
-        socketRef.current.emit('enemiesUpdate', { enemies: enemiesRef.current, roomId });
-        socketRef.current.emit('materialsUpdate', { materials: materialsRef.current, roomId });
+      // Sync state if host (Throttled ~20fps)
+      if (isHost && roomId && socketRef.current && now - lastSyncTimeRef.current > 50) {
+        const optimizedEnemies = enemiesRef.current.map(e => ({
+          id: e.id, 
+          x: Math.round(e.x), 
+          y: Math.round(e.y), 
+          hp: Math.round(e.hp),
+          type: e.type,
+          color: e.color,
+          radius: e.radius
+        }));
+        socketRef.current.emit('enemiesUpdate', { enemies: optimizedEnemies, roomId });
+        
+        const optimizedMaterials = materialsRef.current.map(m => ({
+          x: Math.round(m.x), 
+          y: Math.round(m.y), 
+          type: m.type
+        }));
+        socketRef.current.emit('materialsUpdate', { materials: optimizedMaterials, roomId });
+        
+        lastSyncTimeRef.current = now;
       }
     };
 
@@ -842,6 +929,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {isTouch && (
         <Joystick onChange={(v) => { joystickRef.current = v; }} uiScale={uiScale} />
       )}
+      {/* Ping Display */}
+      <div className="absolute bottom-4 right-4 bg-stone-900/80 backdrop-blur-sm border-2 border-stone-800 rounded-lg px-3 py-1 text-[10px] font-black text-stone-400 z-50 flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${ping < 100 ? 'bg-green-500' : ping < 200 ? 'bg-amber-500' : 'bg-red-500'}`} />
+        PING: {ping}ms
+      </div>
     </div>
   );
 };

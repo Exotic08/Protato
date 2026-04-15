@@ -24,6 +24,10 @@ async function startServer() {
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
+    socket.on('ping', (callback) => {
+      if (typeof callback === 'function') callback();
+    });
+
     socket.on('joinRoom', (data) => {
       const roomId = typeof data === 'string' ? data : data.roomId;
       const name = typeof data === 'object' ? data.name : 'Unknown';
@@ -96,6 +100,8 @@ async function startServer() {
         const roomId = players[socket.id].roomId;
         if (roomId) {
           io.to(roomId).emit('playerDisconnected', socket.id);
+          // Optional: Reset all players ready state in that room if someone leaves to avoid stuck state
+          // Or just let the client handle the count reduction
         }
         delete players[socket.id];
       }

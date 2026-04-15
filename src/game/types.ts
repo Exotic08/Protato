@@ -97,6 +97,7 @@ export interface Player extends Entity {
 export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN';
 
 export interface Enemy extends Entity {
+  id: string;
   speed: number;
   damage: number;
   type: EnemyType;
