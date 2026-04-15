@@ -158,7 +158,7 @@ export const Shop: React.FC<ShopProps> = ({
                       <span className="text-green-400 font-black text-lg">{item.price}</span>
                     </div>
                     <p className="text-stone-400 text-[10px] font-bold mt-1 uppercase leading-tight">
-                      {isWeapon ? `DMG: ${(item as Weapon).damage}` : (item as Item).description}
+                      {isWeapon ? ((item as Weapon).description || `DMG: ${(item as Weapon).damage}`) : (item as Item).description}
                     </p>
                   </div>
                 </div>

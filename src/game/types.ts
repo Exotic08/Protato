@@ -64,6 +64,7 @@ export interface Weapon {
   rarity: number; // 1 to 4 (Tier)
   price: number;
   baseId: string; // To group same weapons for upgrades
+  description?: string;
 }
 
 export interface Item {

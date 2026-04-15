@@ -36,8 +36,9 @@ export const WeaponSelect: React.FC<WeaponSelectProps> = ({ onSelect }) => {
                 <Icon className="w-12 h-12" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-stone-100 mb-2 uppercase">{weapon.name}</h3>
-                <div className="flex flex-wrap gap-2 text-sm font-bold">
+                <h3 className="text-2xl font-black text-stone-100 mb-1 uppercase">{weapon.name}</h3>
+                <p className="text-stone-400 text-[10px] font-bold mb-2 uppercase leading-tight">{weapon.description}</p>
+                <div className="flex flex-wrap gap-2 text-[10px] font-bold">
                   <span className="bg-stone-950 text-red-400 px-2 py-1 rounded-lg border border-stone-800">DMG: {weapon.damage}</span>
                   <span className="bg-stone-950 text-amber-400 px-2 py-1 rounded-lg border border-stone-800">CD: {weapon.cooldown}</span>
                   <span className="bg-stone-950 text-green-400 px-2 py-1 rounded-lg border border-stone-800">TYPE: {weapon.type}</span>

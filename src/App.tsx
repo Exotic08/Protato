@@ -28,6 +28,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [uiScale, setUiScale] = useState(100);
   const [userSetScale, setUserSetScale] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   const [tempScale, setTempScale] = useState(100);
   const [isPortrait, setIsPortrait] = useState(false);
@@ -85,11 +86,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (userSetScale) return;
     const checkScale = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
+      setWindowSize({ width, height });
       setIsPortrait(height > width);
+
+      if (userSetScale) return;
 
       // Base resolution we want to fit is 1600x900 (16:9)
       // We use slightly larger targets to ensure some padding
@@ -446,13 +449,15 @@ export default function App() {
   }
 
   const scaleFactor = uiScale / 100;
+  const virtualWidth = windowSize.width / scaleFactor;
+  const virtualHeight = windowSize.height / scaleFactor;
 
   return (
     <div className="fixed inset-0 bg-stone-950 text-stone-50 overflow-hidden font-sans selection:bg-amber-500/30 flex items-center justify-center">
       <div 
         style={{ 
-          width: 1680,
-          height: 960,
+          width: virtualWidth,
+          height: virtualHeight,
           transform: `scale(${scaleFactor})`, 
           transformOrigin: 'center',
           flexShrink: 0
@@ -748,6 +753,7 @@ export default function App() {
               roomId={roomId}
               uiScale={uiScale}
               isHost={roomId ? roomData?.host === user?.uid : true}
+              displayName={displayName || 'Potato'}
             />
           </motion.div>
         )}

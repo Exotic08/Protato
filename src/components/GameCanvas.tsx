@@ -19,6 +19,7 @@ interface GameCanvasProps {
   roomId?: string | null;
   uiScale: number;
   isHost: boolean;
+  displayName: string;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -34,9 +35,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   roomId,
   uiScale,
   isHost,
+  displayName,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [timer, setTimer] = useState(WAVE_DURATION);
+  const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 4);
+  const [timer, setTimer] = useState(currentWaveDuration);
   const [materialsCount, setMaterialsCount] = useState(initialMaterials);
   const [xpCount, setXpCount] = useState(initialXp);
   
@@ -63,13 +66,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const lastTimeRef = useRef<number>(0);
   const spawnTimerRef = useRef<number>(0);
-  const waveTimerRef = useRef<number>(WAVE_DURATION);
+  const waveTimerRef = useRef<number>(currentWaveDuration);
   const weaponCooldownsRef = useRef<{ [key: string]: number }>({});
   const shakeRef = useRef<number>(0);
   const killsRef = useRef<number>(0);
   const joystickRef = useRef({ x: 0, y: 0 });
   const socketRef = useRef<Socket | null>(null);
-  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, id: string } }>({});
+  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, id: string, name?: string } }>({});
   const [isTouch, setIsTouch] = useState(false);
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     socketRef.current = io(MULTIPLAYER_SERVER);
 
     if (roomId) {
-      socketRef.current.emit('joinRoom', roomId);
+      socketRef.current.emit('joinRoom', { roomId, name: displayName });
     }
 
     socketRef.current.on('currentPlayers', (players) => {
@@ -172,10 +175,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     projectilesRef.current = [];
     materialsRef.current = [];
     floatingTextsRef.current = [];
-    waveTimerRef.current = WAVE_DURATION;
+    waveTimerRef.current = currentWaveDuration;
     shakeRef.current = 0;
     killsRef.current = 0;
-    setTimer(WAVE_DURATION);
+    setTimer(currentWaveDuration);
     setMaterialsCount(initialMaterials);
     setXpCount(initialXp);
 
@@ -223,7 +226,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Emit movement to server
       if (socketRef.current && (dx !== 0 || dy !== 0)) {
-        socketRef.current.emit('playerMovement', { x: player.x, y: player.y, roomId });
+        socketRef.current.emit('playerMovement', { x: player.x, y: player.y, roomId, name: displayName });
       }
 
       // 2. Wave Timer
@@ -592,6 +595,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = 'white';
         ctx.beginPath(); ctx.arc(p.x - 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.arc(p.x + 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+
+        // Draw Name
+        if (p.name) {
+          ctx.globalAlpha = 1;
+          ctx.font = 'bold 12px Fredoka, sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.name, p.x, p.y - player.radius - 10);
+        }
         
         ctx.restore();
       });
@@ -646,6 +658,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.strokeStyle = '#78350f'; // amber-900
       ctx.lineWidth = 3;
       ctx.stroke();
+
+      // Draw Player Name
+      ctx.font = 'bold 14px Fredoka, sans-serif';
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.fillText(displayName, player.x, player.y - player.radius - 15);
       
       // Potato Eyes
       ctx.fillStyle = 'white';

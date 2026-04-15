@@ -67,8 +67,8 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange, uiScale }) => {
         <div 
           className="absolute w-32 h-32 bg-stone-900/40 border-4 border-stone-700/30 rounded-full flex items-center justify-center pointer-events-none"
           style={{ 
-            left: (basePos.x - (window.innerWidth - 1680 * (uiScale/100))/2) / (uiScale/100), 
-            top: (basePos.y - (window.innerHeight - 960 * (uiScale/100))/2) / (uiScale/100),
+            left: basePos.x / (uiScale/100), 
+            top: basePos.y / (uiScale/100),
             transform: 'translate(-50%, -50%)' 
           }}
         >
