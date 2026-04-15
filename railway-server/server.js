@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,6 +11,15 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"]
   }
+});
+
+// Serve static files from the Vite build directory
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+// Fallback to index.html for SPA
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Store player data and room info
