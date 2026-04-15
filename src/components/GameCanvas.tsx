@@ -18,6 +18,7 @@ interface GameCanvasProps {
   wave: number;
   roomId?: string | null;
   uiScale: number;
+  isHost: boolean;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -32,6 +33,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   wave,
   roomId,
   uiScale,
+  isHost,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [timer, setTimer] = useState(WAVE_DURATION);
@@ -76,6 +78,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Initialize Socket.io
     socketRef.current = io(MULTIPLAYER_SERVER);
 
+    if (roomId) {
+      socketRef.current.emit('joinRoom', roomId);
+    }
+
     socketRef.current.on('currentPlayers', (players) => {
       otherPlayersRef.current = players;
     });
@@ -90,6 +96,49 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     socketRef.current.on('playerDisconnected', (id) => {
       delete otherPlayersRef.current[id];
+    });
+
+    socketRef.current.on('enemiesUpdate', (enemies) => {
+      if (!isHost) {
+        enemiesRef.current = enemies;
+      }
+    });
+
+    socketRef.current.on('materialsUpdate', (materials) => {
+      if (!isHost) {
+        materialsRef.current = materials;
+      }
+    });
+
+    socketRef.current.on('materialPickedUp', (data: { x: number, y: number }) => {
+      if (isHost) {
+        // Find material near the coordinates and remove it
+        const index = materialsRef.current.findIndex(m => 
+          Math.abs(m.x - data.x) < 5 && Math.abs(m.y - data.y) < 5
+        );
+        if (index !== -1) {
+          materialsRef.current.splice(index, 1);
+        }
+      } else {
+        // For clients, if they receive it, it's a broadcast from host
+        const index = materialsRef.current.findIndex(m => 
+          Math.abs(m.x - data.x) < 5 && Math.abs(m.y - data.y) < 5
+        );
+        if (index !== -1) {
+          materialsRef.current.splice(index, 1);
+        }
+      }
+    });
+
+    socketRef.current.on('enemyDamage', (data: { x: number, y: number, damage: number }) => {
+      if (isHost) {
+        const enemy = enemiesRef.current.find(e => 
+          Math.abs(e.x - data.x) < 20 && Math.abs(e.y - data.y) < 20
+        );
+        if (enemy) {
+          enemy.hp -= data.damage;
+        }
+      }
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -174,7 +223,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Emit movement to server
       if (socketRef.current && (dx !== 0 || dy !== 0)) {
-        socketRef.current.emit('playerMovement', { x: player.x, y: player.y });
+        socketRef.current.emit('playerMovement', { x: player.x, y: player.y, roomId });
       }
 
       // 2. Wave Timer
@@ -187,140 +236,158 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         setTimer(Math.ceil(waveTimerRef.current));
       }
 
-      // 3. Enemy Spawning
-      spawnTimerRef.current += deltaTime;
-      
-      // Scale spawn rate: starts at 1.5s, decreases as wave increases
-      const baseSpawnRate = Math.max(0.4, 1.5 - (wave * 0.1));
-      const spawnRate = waveTimerRef.current < 5 ? baseSpawnRate * 0.5 : baseSpawnRate;
-      
-      if (spawnTimerRef.current > spawnRate) {
-        spawnTimerRef.current = 0;
-        const side = Math.floor(Math.random() * 4);
-        let ex = 0, ey = 0;
-        if (side === 0) { ex = Math.random() * MAP_WIDTH; ey = -20; }
-        else if (side === 1) { ex = MAP_WIDTH + 20; ey = Math.random() * MAP_HEIGHT; }
-        else if (side === 2) { ex = Math.random() * MAP_WIDTH; ey = MAP_HEIGHT + 20; }
-        else { ex = -20; ey = Math.random() * MAP_HEIGHT; }
-
-        // Determine enemy type based on wave
-        let type: EnemyType = 'BASIC';
-        const rand = Math.random();
+      // 3. Enemy Spawning (Only host spawns)
+      if (isHost) {
+        spawnTimerRef.current += deltaTime;
         
-        if (wave >= 3 && rand < 0.2) type = 'FAST';
-        if (wave >= 5 && rand < 0.15) type = 'TANK';
-        if (wave >= 7 && rand < 0.2) type = 'RANGED';
-        if (wave >= 9 && rand < 0.25) type = 'EXPLOSIVE';
-        if (rand < 0.02) type = 'LOOT_GOBLIN'; // 2% chance to spawn a loot goblin
+        // Scale spawn rate: starts at 1.5s, decreases as wave increases
+        const baseSpawnRate = Math.max(0.4, 1.5 - (wave * 0.1));
+        const spawnRate = waveTimerRef.current < 5 ? baseSpawnRate * 0.5 : baseSpawnRate;
+        
+        if (spawnTimerRef.current > spawnRate) {
+          spawnTimerRef.current = 0;
+          const side = Math.floor(Math.random() * 4);
+          let ex = 0, ey = 0;
+          if (side === 0) { ex = Math.random() * MAP_WIDTH; ey = -20; }
+          else if (side === 1) { ex = MAP_WIDTH + 20; ey = Math.random() * MAP_HEIGHT; }
+          else if (side === 2) { ex = Math.random() * MAP_WIDTH; ey = MAP_HEIGHT + 20; }
+          else { ex = -20; ey = Math.random() * MAP_HEIGHT; }
 
-        // Scale stats per wave
-        const difficultyScale = 1 + (wave - 1) * 0.15;
-        let hp = 15 * difficultyScale;
-        let speed = 1.2;
-        let color = '#ef4444';
-        let radius = 12;
-        let damage = 1 * difficultyScale;
+          // Determine enemy type based on wave
+          let type: EnemyType = 'BASIC';
+          const rand = Math.random();
+          
+          if (wave >= 3 && rand < 0.2) type = 'FAST';
+          if (wave >= 5 && rand < 0.15) type = 'TANK';
+          if (wave >= 7 && rand < 0.2) type = 'RANGED';
+          if (wave >= 9 && rand < 0.25) type = 'EXPLOSIVE';
+          if (rand < 0.02) type = 'LOOT_GOBLIN'; // 2% chance to spawn a loot goblin
 
-        switch(type) {
-          case 'FAST': speed = 3.0; hp *= 0.5; color = '#f97316'; radius = 10; break;
-          case 'TANK': speed = 0.7; hp *= 3.0; color = '#7f1d1d'; radius = 18; break;
-          case 'RANGED': speed = 1.0; hp *= 0.8; color = '#8b5cf6'; radius = 12; break;
-          case 'EXPLOSIVE': speed = 2.2; hp *= 0.6; color = '#fbbf24'; radius = 14; break;
-          case 'LOOT_GOBLIN': speed = 2.5; hp *= 2.0; color = '#10b981'; radius = 15; damage = 0; break;
+          // Scale stats per wave
+          const difficultyScale = 1 + (wave - 1) * 0.15;
+          let hp = 15 * difficultyScale;
+          let speed = 1.2;
+          let color = '#ef4444';
+          let radius = 12;
+          let damage = 1 * difficultyScale;
+
+          switch(type) {
+            case 'FAST': speed = 3.0; hp *= 0.5; color = '#f97316'; radius = 10; break;
+            case 'TANK': speed = 0.7; hp *= 3.0; color = '#7f1d1d'; radius = 18; break;
+            case 'RANGED': speed = 1.0; hp *= 0.8; color = '#8b5cf6'; radius = 12; break;
+            case 'EXPLOSIVE': speed = 2.2; hp *= 0.6; color = '#fbbf24'; radius = 14; break;
+            case 'LOOT_GOBLIN': speed = 2.5; hp *= 2.0; color = '#10b981'; radius = 15; damage = 0; break;
+          }
+
+          enemiesRef.current.push({
+            x: ex,
+            y: ey,
+            radius,
+            hp,
+            maxHp: hp,
+            speed,
+            damage,
+            type,
+            color,
+            cooldown: 0,
+          });
         }
 
-        enemiesRef.current.push({
-          x: ex,
-          y: ey,
-          radius,
-          hp,
-          maxHp: hp,
-          speed,
-          damage,
-          type,
-          color,
-          cooldown: 0,
-        });
-      }
-
-      // Spawn Bosses at specific waves
-      if (wave % 5 === 0 && Math.abs(waveTimerRef.current - 10) < 0.05) {
-        const isMajorBoss = wave % 10 === 0;
-        const bossType = isMajorBoss ? 'BOSS_2' : 'BOSS_1';
-        if (!enemiesRef.current.some(e => e.type === bossType)) {
-          const bossHp = (isMajorBoss ? 1000 : 400) * (1 + (wave / 10));
-          enemiesRef.current.push({
-            x: MAP_WIDTH / 2, y: -50, 
-            radius: isMajorBoss ? 50 : 40, 
-            hp: bossHp, maxHp: bossHp, 
-            speed: 0.4, damage: 5 * (1 + wave/10), 
-            type: bossType, 
-            color: isMajorBoss ? '#9d174d' : '#4c1d95', 
-            cooldown: 0
-          });
+        // Spawn Bosses at specific waves
+        if (wave % 5 === 0 && Math.abs(waveTimerRef.current - 10) < 0.05) {
+          const isMajorBoss = wave % 10 === 0;
+          const bossType = isMajorBoss ? 'BOSS_2' : 'BOSS_1';
+          if (!enemiesRef.current.some(e => e.type === bossType)) {
+            const bossHp = (isMajorBoss ? 1000 : 400) * (1 + (wave / 10));
+            enemiesRef.current.push({
+              x: MAP_WIDTH / 2, y: -50, 
+              radius: isMajorBoss ? 50 : 40, 
+              hp: bossHp, maxHp: bossHp, 
+              speed: 0.4, damage: 5 * (1 + wave/10), 
+              type: bossType, 
+              color: isMajorBoss ? '#9d174d' : '#4c1d95', 
+              cooldown: 0
+            });
+          }
         }
       }
 
       // 4. Update Enemies
       enemiesRef.current.forEach(enemy => {
-        const edx = player.x - enemy.x;
-        const edy = player.y - enemy.y;
+        // Find nearest player (including other players)
+        let targetX = player.x;
+        let targetY = player.y;
+        let minDist = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
+
+        (Object.values(otherPlayersRef.current) as { x: number, y: number, id: string }[]).forEach(p => {
+          const d = Math.sqrt((p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2);
+          if (d < minDist) {
+            minDist = d;
+            targetX = p.x;
+            targetY = p.y;
+          }
+        });
+
+        const edx = targetX - enemy.x;
+        const edy = targetY - enemy.y;
         const dist = Math.sqrt(edx * edx + edy * edy);
 
-        if (enemy.type === 'RANGED') {
-          if (dist > 200) {
+        if (isHost) {
+          if (enemy.type === 'RANGED') {
+            if (dist > 200) {
+              enemy.x += (edx / dist) * enemy.speed;
+              enemy.y += (edy / dist) * enemy.speed;
+            } else if (dist < 150) {
+              enemy.x -= (edx / dist) * enemy.speed;
+              enemy.y -= (edy / dist) * enemy.speed;
+            }
+            
+            // Shoot
+            enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
+            if (enemy.cooldown <= 0) {
+              enemy.cooldown = 120;
+              const angle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+              projectilesRef.current.push({
+                x: enemy.x, y: enemy.y, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4,
+                damage: 2, radius: 5, color: '#a855f7', life: 200, isEnemy: true
+              });
+            }
+          } else if (enemy.type === 'BOSS_1') {
             enemy.x += (edx / dist) * enemy.speed;
             enemy.y += (edy / dist) * enemy.speed;
-          } else if (dist < 150) {
-            enemy.x -= (edx / dist) * enemy.speed;
-            enemy.y -= (edy / dist) * enemy.speed;
-          }
-          
-          // Shoot
-          enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
-          if (enemy.cooldown <= 0) {
-            enemy.cooldown = 120;
-            const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-            projectilesRef.current.push({
-              x: enemy.x, y: enemy.y, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4,
-              damage: 2, radius: 5, color: '#a855f7', life: 200, isEnemy: true
-            });
-          }
-        } else if (enemy.type === 'BOSS_1') {
-          enemy.x += (edx / dist) * enemy.speed;
-          enemy.y += (edy / dist) * enemy.speed;
-          
-          enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
-          if (enemy.cooldown <= 0) {
-            enemy.cooldown = 180;
-            // Spawn minions
-            for (let i = 0; i < 4; i++) {
-              enemiesRef.current.push({
-                x: enemy.x + (Math.random() - 0.5) * 100,
-                y: enemy.y + (Math.random() - 0.5) * 100,
-                radius: 10, hp: 10, maxHp: 10, speed: 2, damage: 1, type: 'BASIC', color: '#ef4444'
-              });
+            
+            enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
+            if (enemy.cooldown <= 0) {
+              enemy.cooldown = 180;
+              // Spawn minions
+              for (let i = 0; i < 4; i++) {
+                enemiesRef.current.push({
+                  x: enemy.x + (Math.random() - 0.5) * 100,
+                  y: enemy.y + (Math.random() - 0.5) * 100,
+                  radius: 10, hp: 10, maxHp: 10, speed: 2, damage: 1, type: 'BASIC', color: '#ef4444'
+                });
+              }
             }
-          }
-        } else if (enemy.type === 'BOSS_2') {
-          enemy.x += (edx / dist) * enemy.speed;
-          enemy.y += (edy / dist) * enemy.speed;
-          
-          enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
-          if (enemy.cooldown <= 0) {
-            enemy.cooldown = 100;
-            // Shoot pattern
-            for (let i = 0; i < 8; i++) {
-              const angle = (i / 8) * Math.PI * 2;
-              projectilesRef.current.push({
-                x: enemy.x, y: enemy.y, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
-                damage: 3, radius: 6, color: '#ec4899', life: 300, isEnemy: true
-              });
+          } else if (enemy.type === 'BOSS_2') {
+            enemy.x += (edx / dist) * enemy.speed;
+            enemy.y += (edy / dist) * enemy.speed;
+            
+            enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
+            if (enemy.cooldown <= 0) {
+              enemy.cooldown = 100;
+              // Shoot pattern
+              for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                projectilesRef.current.push({
+                  x: enemy.x, y: enemy.y, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+                  damage: 3, radius: 6, color: '#ec4899', life: 300, isEnemy: true
+                });
+              }
             }
+          } else {
+            enemy.x += (edx / dist) * enemy.speed;
+            enemy.y += (edy / dist) * enemy.speed;
           }
-        } else {
-          enemy.x += (edx / dist) * enemy.speed;
-          enemy.y += (edy / dist) * enemy.speed;
         }
 
         // Player collision
@@ -378,6 +445,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             } else {
               const damage = (weapon.damage + stats.meleeDamage) * (1 + stats.damagePct / 100);
               nearestEnemy.hp -= damage;
+              if (roomId && socketRef.current) {
+                socketRef.current.emit('enemyDamage', { x: nearestEnemy.x, y: nearestEnemy.y, damage, roomId });
+              }
               floatingTextsRef.current.push({
                 x: nearestEnemy.x, y: nearestEnemy.y, text: Math.round(damage).toString(), color: '#ffffff', life: 30
               });
@@ -405,6 +475,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           enemiesRef.current.forEach(enemy => {
             if (!hit && Math.sqrt((p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2) < p.radius + enemy.radius) {
               enemy.hp -= p.damage;
+              if (roomId && socketRef.current) {
+                socketRef.current.emit('enemyDamage', { x: enemy.x, y: enemy.y, damage: p.damage, roomId });
+              }
               floatingTextsRef.current.push({
                 x: enemy.x, y: enemy.y, text: Math.round(p.damage).toString(), color: '#ffffff', life: 30
               });
@@ -453,6 +526,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           player.xp += m.value;
           setMaterialsCount(player.materials);
           setXpCount(player.xp);
+          
+          if (roomId && socketRef.current) {
+            socketRef.current.emit('materialPickedUp', { x: m.x, y: m.y, roomId });
+          }
           return false;
         }
         return true;
@@ -464,6 +541,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         t.life--;
         return t.life > 0;
       });
+
+      // Sync state if host
+      if (isHost && roomId && socketRef.current) {
+        socketRef.current.emit('enemiesUpdate', { enemies: enemiesRef.current, roomId });
+        socketRef.current.emit('materialsUpdate', { materials: materialsRef.current, roomId });
+      }
     };
 
     const draw = (ctx: CanvasRenderingContext2D) => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Item } from '../game/types';
 import { ITEMS } from '../game/constants';
 import * as Icons from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 interface OpenCrateProps {
   onItemSelect: (item: Item) => void;

@@ -4,6 +4,7 @@ import { Shop } from './components/Shop';
 import { LevelUp } from './components/LevelUp';
 import { CharacterSelect } from './components/CharacterSelect';
 import { WeaponSelect } from './components/WeaponSelect';
+import { OpenCrate } from './components/OpenCrate';
 import { AuthUI } from './components/AuthUI';
 import { DisplayNameModal } from './components/DisplayNameModal';
 import { MultiplayerMenu } from './components/MultiplayerMenu';
@@ -718,6 +719,15 @@ export default function App() {
           </motion.div>
         )}
 
+        {gameState === 'OPEN_CRATE' && (
+          <motion.div key="open_crate" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <OpenCrate 
+              onItemSelect={handleCrateOpened}
+              cratesRemaining={cratesToOpen}
+            />
+          </motion.div>
+        )}
+
         {gameState === 'PLAYING' && (
           <motion.div 
             key="playing"
@@ -737,6 +747,7 @@ export default function App() {
               wave={wave}
               roomId={roomId}
               uiScale={uiScale}
+              isHost={roomId ? roomData?.host === user?.uid : true}
             />
           </motion.div>
         )}
