@@ -79,7 +79,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
     
     // Initialize Socket.io
-    socketRef.current = io(MULTIPLAYER_SERVER);
+    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.includes('run.app') 
+      ? window.location.origin 
+      : MULTIPLAYER_SERVER;
+    
+    socketRef.current = io(socketUrl);
 
     if (roomId) {
       socketRef.current.emit('joinRoom', { roomId, name: displayName });
