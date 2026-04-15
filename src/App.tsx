@@ -10,7 +10,7 @@ import { DisplayNameModal } from './components/DisplayNameModal';
 import { MultiplayerMenu } from './components/MultiplayerMenu';
 import { RoomLobby } from './components/RoomLobby';
 import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData } from './game/types';
-import { INITIAL_STATS, WEAPONS, XP_PER_LEVEL } from './game/constants';
+import { INITIAL_STATS, WEAPONS, XP_PER_LEVEL, MULTIPLAYER_SERVER } from './game/constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize, Users } from 'lucide-react';
 import { auth, db } from './firebase';
@@ -19,6 +19,7 @@ import { ref, onValue, set, update, remove, onDisconnect } from 'firebase/databa
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [guestUser, setGuestUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   
@@ -128,6 +129,19 @@ export default function App() {
     setGlobalStats(newStats);
     if (user) {
       set(ref(db, `users/${user.uid}/stats`), newStats);
+    } else if (guestUser) {
+      // Sync to Firestore via socket for guest users
+      const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.includes('run.app') 
+        ? window.location.origin 
+        : MULTIPLAYER_SERVER;
+      import('socket.io-client').then(({ io }) => {
+        const socket = io(socketUrl);
+        socket.emit('updateUserData', { 
+          username: guestUser.username, 
+          updates: { stats: newStats } 
+        });
+        setTimeout(() => socket.disconnect(), 1000);
+      });
     } else {
       localStorage.setItem('potato_survivor_stats', JSON.stringify(newStats));
     }
@@ -494,7 +508,7 @@ export default function App() {
                         <UserIcon className="w-6 h-6" />
                       </div>
                       <div className="overflow-hidden">
-                        <p className="text-[10px] text-stone-500 font-black uppercase tracking-tighter">{user.email}</p>
+                        <p className="text-[10px] text-stone-500 font-black uppercase tracking-tighter">{user?.email || 'GUEST ACCOUNT'}</p>
                         <p className="text-base font-black text-stone-300 truncate">{displayName || 'No Name'}</p>
                       </div>
                     </div>
@@ -557,7 +571,15 @@ export default function App() {
                     
                     {gameState !== 'PLAYING' && gameState !== 'SHOP' && (
                       <button 
-                        onClick={handleSignOut}
+                        onClick={() => {
+                          if (user) {
+                            handleSignOut();
+                          } else {
+                            setGuestUser(null);
+                            setDisplayName(null);
+                            setShowSettings(false);
+                          }
+                        }}
                         className="w-full py-4 bg-red-500/10 text-red-500 font-black rounded-2xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2 uppercase"
                       >
                         <LogOut className="w-4 h-4" /> SIGN OUT
@@ -570,9 +592,16 @@ export default function App() {
           )}
         </div>
 
-        {!user && <AuthUI />}
+        {!user && !guestUser && (
+          <AuthUI onUsernameLogin={(data) => {
+            setGuestUser(data);
+            setDisplayName(data.username);
+            if (data.stats) setGlobalStats(data.stats);
+            setAuthLoading(false);
+          }} />
+        )}
 
-      {user && forceNameSetup && (
+      {(user || guestUser) && forceNameSetup && (
         <DisplayNameModal 
           currentName={displayName} 
           forced={true} 
@@ -587,7 +616,7 @@ export default function App() {
       )}
 
       <AnimatePresence mode="wait">
-        {user && !forceNameSetup && gameState === 'MENU' && (
+        {(user || guestUser) && !forceNameSetup && gameState === 'MENU' && (
           <motion.div 
             key="menu"
             initial={{ opacity: 0, y: 20 }}

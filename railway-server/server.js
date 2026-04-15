@@ -2,9 +2,29 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const admin = require('firebase-admin');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
+
+// Initialize Firebase Admin
+let db = null;
+try {
+  const configJson = process.env.FIREBASE_CONFIG_JSON;
+  if (configJson) {
+    const config = JSON.parse(configJson);
+    admin.initializeApp({
+      credential: admin.credential.cert(config)
+    });
+    db = admin.firestore();
+    console.log('Firebase Admin initialized successfully from environment variable');
+  } else {
+    console.warn('FIREBASE_CONFIG_JSON environment variable not found, persistence disabled');
+  }
+} catch (error) {
+  console.error('Error initializing Firebase Admin:', error);
+}
 
 const io = new Server(server, {
   cors: {
@@ -26,9 +46,43 @@ app.get('*', (req, res) => {
 const players = {};
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+    console.log('User connected:', socket.id);
 
-  socket.on('joinRoom', (data) => {
+    socket.on('login', async (username, callback) => {
+      if (!db) {
+        return callback({ success: false, error: 'Database not initialized' });
+      }
+      try {
+        const userRef = db.collection('users').doc(username);
+        const doc = await userRef.get();
+        if (!doc.exists) {
+          const initialData = {
+            username,
+            stats: { totalKills: 0, maxWave: 0, totalMaterials: 0 },
+            unlockedCharacters: ['potato'],
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          };
+          await userRef.set(initialData);
+          callback({ success: true, data: initialData });
+        } else {
+          callback({ success: true, data: doc.data() });
+        }
+      } catch (error) {
+        callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('updateUserData', async (data) => {
+      if (!db) return;
+      const { username, updates } = data;
+      try {
+        await db.collection('users').doc(username).update(updates);
+      } catch (error) {
+        console.error('Error updating user data:', error);
+      }
+    });
+
+    socket.on('joinRoom', (data) => {
     const roomId = typeof data === 'string' ? data : data.roomId;
     const name = typeof data === 'object' ? data.name : 'Unknown';
     

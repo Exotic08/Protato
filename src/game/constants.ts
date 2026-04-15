@@ -14,6 +14,10 @@ export const INITIAL_STATS: Stats = {
   speed: 100, // base speed pixels per second
   luck: 0,
   harvest: 0,
+  critChance: 0,
+  xpGain: 0,
+  pickupRange: 100,
+  shopPrice: 0,
 };
 
 export const CHARACTERS: Character[] = [
@@ -72,7 +76,7 @@ export const WEAPONS: Weapon[] = [
   { id: 'spiked_mace_1', baseId: 'spiked_mace', name: 'Chùy Gai', type: 'MELEE', damage: 20, cooldown: 90, range: 85, knockback: 25, icon: 'Zap', rarity: 2, price: 22, description: 'Giảm 5 giáp mục tiêu' },
   { id: 'boxing_gloves_1', baseId: 'boxing_gloves', name: 'Găng Tay Đấm Bốc', type: 'MELEE', damage: 5, cooldown: 30, range: 70, knockback: 50, icon: 'Zap', rarity: 1, price: 15, description: 'Đẩy lùi cực mạnh' },
   { id: 'light_sword_1', baseId: 'light_sword', name: 'Kiếm Ánh Sáng', type: 'MELEE', damage: 15, cooldown: 50, range: 120, knockback: 10, icon: 'Sword', rarity: 3, price: 45, description: 'Tầm chém rộng, xuyên 2 mục tiêu' },
-  { id: 'death_scythe_1', baseId: 'death_scythe', name: 'Lưỡi Hái Tử Thần', type: 'MELEE', damage: 40, cooldown: 180, range: 150, knockback: 30, icon: 'Sword', rarity: 4, price: 150, description: 'Giết quái tăng sát thương vĩnh viễn' },
+  { id: 'death_scythe_1', baseId: 'death_scythe', name: 'Lưỡi Hái Tử Thần', type: 'MELEE', damage: 40, cooldown: 180, range: 150, knockback: 30, icon: 'Sword', rarity: 4, price: 150, description: 'Giết quái tăng sát thương vĩnh viễn', passive: { trigger: 'ON_KILL', type: 'DAMAGE_STACK', value: 0.5, description: '+0.5 Dmg mỗi mạng' } },
   { id: 'old_pistol_1', baseId: 'old_pistol', name: 'Súng Lục Cũ', type: 'RANGED', damage: 12, cooldown: 50, range: 400, projectileSpeed: 500, projectileCount: 1, knockback: 5, icon: 'Crosshair', rarity: 1, price: 12, description: 'Phát thứ 6 luôn chí mạng' },
   { id: 'wooden_bow_1', baseId: 'wooden_bow', name: 'Cung Gỗ', type: 'RANGED', damage: 15, cooldown: 70, range: 600, projectileSpeed: 600, projectileCount: 1, knockback: 8, icon: 'Target', rarity: 1, price: 15, description: '50% Xuyên thấu' },
   { id: 'flamethrower_1', baseId: 'flamethrower', name: 'Súng Lửa', type: 'RANGED', damage: 3, cooldown: 8, range: 250, projectileSpeed: 400, projectileCount: 1, knockback: 1, icon: 'Zap', rarity: 3, price: 60, description: 'Cực nhanh, cháy diện rộng (AOE)' },
@@ -80,7 +84,7 @@ export const WEAPONS: Weapon[] = [
   { id: 'magic_crossbow_1', baseId: 'magic_crossbow', name: 'Nỏ Thần', type: 'RANGED', damage: 35, cooldown: 100, range: 650, projectileSpeed: 700, projectileCount: 1, knockback: 15, icon: 'Target', rarity: 3, price: 90, description: 'Làm chậm quái 30%' },
   { id: 'machine_gun_1', baseId: 'machine_gun', name: 'Súng Máy', type: 'RANGED', damage: 2, cooldown: 6, range: 450, projectileSpeed: 800, projectileCount: 1, knockback: 1, icon: 'Crosshair', rarity: 3, price: 100, description: 'Càng bắn lâu sát thương càng tăng' },
   { id: 'time_bomb_1', baseId: 'time_bomb', name: 'Bom Hẹn Giờ', type: 'RANGED', damage: 50, cooldown: 150, range: 300, projectileSpeed: 300, projectileCount: 1, knockback: 40, icon: 'Zap', rarity: 3, price: 70, description: 'Nổ AOE, 10% nổ kép' },
-  { id: 'ice_staff_1', baseId: 'ice_staff', name: 'Gậy Băng', type: 'RANGED', damage: 10, cooldown: 60, range: 500, projectileSpeed: 450, projectileCount: 1, knockback: 5, icon: 'Wand', rarity: 2, price: 40, description: '15% Đóng băng 1s' },
+  { id: 'ice_staff_1', baseId: 'ice_staff', name: 'Gậy Băng', type: 'RANGED', damage: 10, cooldown: 60, range: 500, projectileSpeed: 450, projectileCount: 1, knockback: 5, icon: 'Wand', rarity: 2, price: 40, description: '15% Đóng băng 1s', passive: { trigger: 'LOW_HP', type: 'FREEZE', value: 1, chance: 50, description: 'Máu thấp: 50% Đóng băng' } },
   { id: 'thunder_staff_1', baseId: 'thunder_staff', name: 'Quyền Trượng Sấm Sét', type: 'RANGED', damage: 18, cooldown: 70, range: 450, projectileSpeed: 900, projectileCount: 1, knockback: 3, icon: 'Wand', rarity: 3, price: 85, description: 'Giật sét lan 3 mục tiêu' },
   { id: 'ancient_book_1', baseId: 'ancient_book', name: 'Sách Phép Cổ', type: 'RANGED', damage: 15, cooldown: 80, range: 550, projectileSpeed: 400, projectileCount: 1, knockback: 5, icon: 'Wand', rarity: 2, price: 50, description: 'Dmg theo Int, -5% hồi chiêu' },
   { id: 'poison_flask_1', baseId: 'poison_flask', name: 'Bình Thuốc Độc', type: 'RANGED', damage: 5, cooldown: 90, range: 350, projectileSpeed: 350, projectileCount: 1, knockback: 2, icon: 'Zap', rarity: 2, price: 45, description: 'Nổ AOE, chết lây độc sang quái khác' },
@@ -96,12 +100,35 @@ export const ITEMS: Item[] = [
   { id: 'armor_plate', name: 'Armor Plate', description: '+3 Armor, -2% Speed', stats: { armor: 3, speed: -2 }, price: 20, rarity: 2, icon: 'Shield' },
   { id: 'steroids', name: 'Steroids', description: '+5 Melee Damage, +2 Ranged Damage, -10 Max HP', stats: { meleeDamage: 5, rangedDamage: 2, maxHp: -10 }, price: 30, rarity: 3, icon: 'Zap' },
   { id: 'energy_drink', name: 'Energy Drink', description: '+15% Speed, +10% Attack Speed', stats: { speed: 15, attackSpeed: 10 }, price: 40, rarity: 3, icon: 'Zap' },
+  
+  // 20 NEW ITEMS
+  { id: 'rotting_wood_armor', name: 'Giáp Gỗ Mục', description: '+2 Armor, -1 Speed', stats: { armor: 2, speed: -1 }, price: 8, rarity: 1, icon: 'Shield' },
+  { id: 'energy_shield', name: 'Khiên Năng Lượng', description: '+10% Dodge', stats: { dodge: 10 }, price: 15, rarity: 2, icon: 'Shield' },
+  { id: 'medical_bandage', name: 'Băng Gạc Y Tế', description: '+5 HP Regen', stats: { hpRegen: 5 }, price: 12, rarity: 1, icon: 'Heart' },
+  { id: 'steel_heart', name: 'Trái Tim Thép', description: '+20 Max HP, -2% Atk Speed', stats: { maxHp: 20, attackSpeed: -2 }, price: 25, rarity: 3, icon: 'Heart' },
+  { id: 'reflex_shoes', name: 'Giày Phản Phản', description: '+5% Speed, +1 Armor', stats: { speed: 5, armor: 1 }, price: 12, rarity: 1, icon: 'Zap' },
+  { id: 'scope', name: 'Kính Ngắm', description: '+5% Crit Chance', stats: { critChance: 5 }, price: 15, rarity: 2, icon: 'Crosshair' },
+  { id: 'sharpening_stone', name: 'Đá Mài Sắc', description: '+3 Melee Damage', stats: { meleeDamage: 3 }, price: 15, rarity: 2, icon: 'Sword' },
+  { id: 'spare_ammo', name: 'Hộp Đạn Dự Phòng', description: '+3 Ranged Damage', stats: { rangedDamage: 3 }, price: 15, rarity: 2, icon: 'Crosshair' },
+  { id: 'telescope', name: 'Ống Kính Viễn Vọng', description: '+50 Range, -5% Atk Speed', stats: { range: 50, attackSpeed: -5 }, price: 20, rarity: 2, icon: 'Glasses' },
+  { id: 'blacksmith_gloves', name: 'Găng Tay Thợ Rèn', description: '+10% Atk Speed', stats: { attackSpeed: 10 }, price: 18, rarity: 2, icon: 'Zap' },
+  { id: 'torn_pouch', name: 'Túi Tiền Rách', description: '+5 Luck, +10 Gold/Wave', stats: { luck: 5, harvest: 10 }, price: 15, rarity: 1, icon: 'Coins' },
+  { id: 'four_leaf_clover', name: 'Cỏ 4 Lá', description: '+15 Luck', stats: { luck: 15 }, price: 20, rarity: 2, icon: 'Smile' },
+  { id: 'membership_card', name: 'Thẻ Thành Viên', description: '-10% Shop Price', stats: { shopPrice: -10 }, price: 25, rarity: 3, icon: 'Coins' },
+  { id: 'calculator', name: 'Máy Tính Cầm Tay', description: '+10% XP Gain', stats: { xpGain: 10 }, price: 30, rarity: 3, icon: 'Glasses' },
+  { id: 'money_magnet', name: 'Nam Châm Hút Tiền', description: '+50% Pickup Range', stats: { pickupRange: 50 }, price: 20, rarity: 2, icon: 'Zap' },
+  { id: 'fire_flask', name: 'Bình Lửa', description: '20% phản nổ khi bị đánh', stats: {}, price: 35, rarity: 3, icon: 'Zap' },
+  { id: 'butterfly_wings', name: 'Cánh Bướm', description: 'Đứng im 5s thì đòn sau X2 sát thương', stats: {}, price: 40, rarity: 4, icon: 'Zap' },
+  { id: 'demon_mask', name: 'Mặt Nạ Quỷ', description: '+20% Damage, -10 Max HP', stats: { damagePct: 20, maxHp: -10 }, price: 45, rarity: 4, icon: 'Smile' },
+  { id: 'oxygen_tank', name: 'Bình Oxy', description: 'Tàng hình 2s khi bị tấn công, hồi chiêu 5 giây', stats: {}, price: 50, rarity: 4, icon: 'Zap' },
+  { id: 'badge_10a1', name: 'Huy Hiệu 10A1', description: '+5 All Stats', stats: { maxHp: 5, hpRegen: 5, lifeSteal: 5, damagePct: 5, meleeDamage: 5, rangedDamage: 5, attackSpeed: 5, range: 5, armor: 5, dodge: 5, speed: 5, luck: 5, harvest: 5, critChance: 5, xpGain: 5, pickupRange: 5, shopPrice: -5 }, price: 100, rarity: 4, icon: 'Target' },
 ];
 
 export const WAVE_DURATION = 20; // seconds
 export const XP_PER_LEVEL = (level: number) => 5 + level * 10;
 export const MAP_WIDTH = 1600;
 export const MAP_HEIGHT = 900;
+export const MULTIPLAYER_SERVER = ''; // Fallback for production if needed
 export const GRID_SIZE_X = MAP_WIDTH / 50; // 32px
 export const GRID_SIZE_Y = MAP_HEIGHT / 30; // 30px
 

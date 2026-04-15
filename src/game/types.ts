@@ -31,6 +31,10 @@ export interface Stats {
   speed: number;
   luck: number;
   harvest: number;
+  critChance: number;
+  xpGain: number;
+  pickupRange: number;
+  shopPrice: number;
 }
 
 export interface Character {
@@ -50,6 +54,16 @@ export interface Character {
 
 export type WeaponType = 'MELEE' | 'RANGED';
 
+export type PassiveTrigger = 'ON_KILL' | 'ON_CRIT' | 'LOW_HP' | 'ON_HIT';
+
+export interface PassiveAbility {
+  trigger: PassiveTrigger;
+  type: 'STAT_BOOST' | 'HEAL' | 'FREEZE' | 'EXPLODE' | 'DAMAGE_STACK';
+  value: number;
+  chance?: number;
+  description: string;
+}
+
 export interface Weapon {
   id: string;
   name: string;
@@ -65,6 +79,7 @@ export interface Weapon {
   price: number;
   baseId: string; // To group same weapons for upgrades
   description?: string;
+  passive?: PassiveAbility;
 }
 
 export interface Item {

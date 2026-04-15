@@ -79,6 +79,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const lastIsMovingRef = useRef<boolean>(false);
   const [isTouch, setIsTouch] = useState(false);
   const [ping, setPing] = useState<number>(0);
+  const weaponStacksRef = useRef<{ [key: string]: number }>({});
 
   useEffect(() => {
     setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -105,7 +106,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     socketRef.current.on('currentPlayers', (players) => {
       const playersWithTargets: any = {};
       Object.keys(players).forEach(id => {
-        playersWithTargets[id] = { ...players[id], targetX: players[id].x, targetY: players[id].y };
+        if (id !== socketRef.current?.id) {
+          playersWithTargets[id] = { ...players[id], targetX: players[id].x, targetY: players[id].y };
+        }
       });
       otherPlayersRef.current = playersWithTargets;
     });
@@ -408,7 +411,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const edy = targetY - enemy.y;
         const dist = Math.sqrt(edx * edx + edy * edy);
 
-        if (isHost) {
+        if (isHost && dist > 0.1) {
           if (enemy.type === 'RANGED') {
             if (dist > 200) {
               enemy.x += (edx / dist) * enemy.speed;
@@ -506,22 +509,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             
             if (weapon.type === 'RANGED') {
               const angle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
+              
+              // Handle LOW_HP passives
+              let extraFreeze = false;
+              if (weapon.passive?.trigger === 'LOW_HP' && player.hp < player.maxHp * 0.3) {
+                if (weapon.passive.type === 'FREEZE' && Math.random() < (weapon.passive.chance || 0) / 100) {
+                  extraFreeze = true;
+                }
+              }
+
               for (let i = 0; i < (weapon.projectileCount || 1); i++) {
                 const spread = (Math.random() - 0.5) * 0.2;
+                const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
                 projectilesRef.current.push({
                   x: player.x,
                   y: player.y,
                   vx: Math.cos(angle + spread) * (weapon.projectileSpeed! / 60),
                   vy: Math.sin(angle + spread) * (weapon.projectileSpeed! / 60),
-                  damage: (weapon.damage + stats.rangedDamage) * (1 + stats.damagePct / 100),
+                  damage: (weapon.damage + stats.rangedDamage + bonusDmg) * (1 + stats.damagePct / 100),
                   radius: 4,
-                  color: '#fbbf24',
+                  color: extraFreeze ? '#60a5fa' : '#fbbf24',
                   life: 100,
                 });
               }
             } else {
-              const damage = (weapon.damage + stats.meleeDamage) * (1 + stats.damagePct / 100);
+              const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
+              const damage = (weapon.damage + stats.meleeDamage + bonusDmg) * (1 + stats.damagePct / 100);
               nearestEnemy.hp -= damage;
+              
+              // Handle ON_HIT passives
+              if (weapon.passive?.trigger === 'ON_HIT') {
+                if (weapon.passive.type === 'HEAL' && Math.random() < (weapon.passive.chance || 0) / 100) {
+                  player.hp = Math.min(player.maxHp, player.hp + weapon.passive.value);
+                }
+              }
+
               if (roomId && socketRef.current) {
                 socketRef.current.emit('enemyDamage', { x: nearestEnemy.x, y: nearestEnemy.y, damage, roomId });
               }
@@ -572,6 +594,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (enemy.hp <= 0) {
           killsRef.current += 1;
           
+          // Handle ON_KILL passives
+          player.weapons.forEach(w => {
+            if (w.passive?.trigger === 'ON_KILL') {
+              if (w.passive.type === 'DAMAGE_STACK') {
+                weaponStacksRef.current[w.id] = (weaponStacksRef.current[w.id] || 0) + w.passive.value;
+              } else if (w.passive.type === 'HEAL' && Math.random() < (w.passive.chance || 0) / 100) {
+                player.hp = Math.min(player.maxHp, player.hp + w.passive.value);
+              }
+            }
+          });
+
           if (enemy.type === 'LOOT_GOBLIN' || enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2') {
             cratesRef.current += 1;
             floatingTextsRef.current.push({

@@ -4,9 +4,29 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import admin from 'firebase-admin';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Firebase Admin
+let db: admin.firestore.Firestore | null = null;
+try {
+  const configJson = process.env.FIREBASE_CONFIG_JSON;
+  if (configJson) {
+    const config = JSON.parse(configJson);
+    admin.initializeApp({
+      credential: admin.credential.cert(config)
+    });
+    db = admin.firestore();
+    console.log('Firebase Admin initialized successfully from environment variable');
+  } else {
+    console.warn('FIREBASE_CONFIG_JSON environment variable not found, persistence disabled');
+  }
+} catch (error) {
+  console.error('Error initializing Firebase Admin:', error);
+}
 
 async function startServer() {
   const app = express();
@@ -26,6 +46,40 @@ async function startServer() {
 
     socket.on('ping', (callback) => {
       if (typeof callback === 'function') callback();
+    });
+
+    socket.on('login', async (username, callback) => {
+      if (!db) {
+        return callback({ success: false, error: 'Database not initialized' });
+      }
+      try {
+        const userRef = db.collection('users').doc(username);
+        const doc = await userRef.get();
+        if (!doc.exists) {
+          const initialData = {
+            username,
+            stats: { totalKills: 0, maxWave: 0, totalMaterials: 0 },
+            unlockedCharacters: ['potato'],
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          };
+          await userRef.set(initialData);
+          callback({ success: true, data: initialData });
+        } else {
+          callback({ success: true, data: doc.data() });
+        }
+      } catch (error: any) {
+        callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('updateUserData', async (data) => {
+      if (!db) return;
+      const { username, updates } = data;
+      try {
+        await db.collection('users').doc(username).update(updates);
+      } catch (error) {
+        console.error('Error updating user data:', error);
+      }
     });
 
     socket.on('joinRoom', (data) => {

@@ -111,31 +111,31 @@ export const Shop: React.FC<ShopProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-950/95 flex flex-col items-center justify-start p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-stone-950/95 flex flex-col items-center justify-start p-2 md:p-4 z-50 overflow-y-auto">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-6 max-w-5xl w-full shadow-2xl my-auto"
+        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-4 md:p-6 max-w-[1600px] w-full shadow-2xl my-auto"
       >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-4xl font-black text-amber-500 flex items-center gap-4 drop-shadow-[0_4px_0_rgb(180,83,9)]">
-            <ShoppingCart className="w-8 h-8" />
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl md:text-3xl font-black text-amber-500 flex items-center gap-3 drop-shadow-[0_4px_0_rgb(180,83,9)]">
+            <ShoppingCart className="w-6 h-6 md:w-8 md:h-8" />
             SHOP
           </h2>
-          <div className="flex items-center gap-4">
-            <div className="text-xl font-black text-green-400 bg-stone-950 px-5 py-2 rounded-2xl border-4 border-stone-800 shadow-inner">
+          <div className="flex items-center gap-3">
+            <div className="text-lg font-black text-green-400 bg-stone-950 px-4 py-1.5 rounded-xl border-4 border-stone-800 shadow-inner">
               {materials} MATERIALS
             </div>
             <button
               onClick={handleReroll}
-              className={`flex items-center gap-3 px-5 py-2 rounded-2xl font-black text-lg border-4 border-b-8 transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-1' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-xl font-black text-base border-4 border-b-8 transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-1' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
             >
-              <RefreshCw className="w-5 h-5" /> REROLL ({rerollCost})
+              <RefreshCw className="w-4 h-4" /> REROLL ({rerollCost})
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
           {shopItems.map((item) => {
             const Icon = ICON_MAP[item.icon] || ShoppingCart;
             const isWeapon = 'type' in item;
@@ -145,25 +145,25 @@ export const Shop: React.FC<ShopProps> = ({
               <motion.div
                 key={item.id}
                 whileHover={{ y: -4 }}
-                className={`border-4 border-b-8 rounded-3xl p-5 flex flex-col gap-4 cursor-pointer transition-all active:border-b-4 active:translate-y-1 ${rarityClass}`}
+                className={`border-4 border-b-8 rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 cursor-pointer transition-all active:border-b-4 active:translate-y-1 ${rarityClass}`}
                 onClick={() => handleBuy(item)}
               >
-                <div className="flex gap-4">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 bg-stone-950 border-2 border-stone-800 shadow-inner`}>
-                    <Icon className="w-10 h-10" />
+                <div className="flex gap-3">
+                  <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center flex-shrink-0 bg-stone-950 border-2 border-stone-800 shadow-inner`}>
+                    <Icon className="w-7 h-7 md:w-9 md:h-9" />
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
-                      <h3 className="text-xl font-black uppercase leading-tight">{item.name}</h3>
-                      <span className="text-green-400 font-black text-lg">{item.price}</span>
+                      <h3 className="text-lg font-black uppercase leading-tight">{item.name}</h3>
+                      <span className="text-green-400 font-black text-base">{item.price}</span>
                     </div>
-                    <p className="text-stone-400 text-[10px] font-bold mt-1 uppercase leading-tight">
+                    <p className="text-stone-400 text-[9px] font-bold mt-0.5 uppercase leading-tight">
                       {isWeapon ? ((item as Weapon).description || `DMG: ${(item as Weapon).damage}`) : (item as Item).description}
                     </p>
                   </div>
                 </div>
                 <button 
-                  className={`w-full py-2 rounded-xl text-lg font-black transition-colors border-2 ${materials >= item.price ? 'bg-amber-500 text-stone-950 border-amber-700 hover:bg-amber-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
+                  className={`w-full py-1.5 rounded-lg text-base font-black transition-colors border-2 ${materials >= item.price ? 'bg-amber-500 text-stone-950 border-amber-700 hover:bg-amber-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
                 >
                   BUY
                 </button>
@@ -172,11 +172,11 @@ export const Shop: React.FC<ShopProps> = ({
           })}
         </div>
 
-        <div className="mb-10 bg-stone-950 p-6 rounded-3xl border-4 border-stone-800">
-          <h3 className="text-2xl font-black text-stone-400 mb-6 flex items-center gap-3 uppercase">
-            <ArrowUpCircle className="w-6 h-6" /> YOUR WEAPONS (UPGRADE / SELL)
+        <div className="mb-6 bg-stone-950 p-3 md:p-4 rounded-2xl border-4 border-stone-800">
+          <h3 className="text-lg font-black text-stone-400 mb-3 md:mb-4 flex items-center gap-2 uppercase">
+            <ArrowUpCircle className="w-5 h-5" /> YOUR WEAPONS (UPGRADE / SELL)
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
             {currentWeapons.map((w, i) => {
               const next = getNextTier(w);
               const Icon = ICON_MAP[w.icon] || Sword;
@@ -184,27 +184,27 @@ export const Shop: React.FC<ShopProps> = ({
               const sellPrice = Math.floor(w.price * 0.5);
               
               return (
-                <div key={i} className={`border-4 rounded-2xl p-4 text-center flex flex-col justify-between ${rarityClass}`}>
+                <div key={i} className={`border-4 rounded-xl p-2 md:p-3 text-center flex flex-col justify-between ${rarityClass}`}>
                   <div>
-                    <div className="flex justify-center mb-3">
-                      <Icon className="w-8 h-8" />
+                    <div className="flex justify-center mb-2">
+                      <Icon className="w-6 h-6 md:w-7 md:h-7" />
                     </div>
-                    <div className="text-xs font-black truncate mb-3 uppercase">{w.name}</div>
+                    <div className="text-[10px] font-black truncate mb-2 uppercase">{w.name}</div>
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
                     {next ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleUpgrade(i, w); }}
-                        className={`w-full py-2 rounded-xl text-[10px] font-black border-2 ${materials >= getDynamicPrice(next.price) ? 'bg-blue-500 text-white border-blue-700 hover:bg-blue-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
+                        className={`w-full py-1 rounded-lg text-[9px] font-black border-2 ${materials >= getDynamicPrice(next.price) ? 'bg-blue-500 text-white border-blue-700 hover:bg-blue-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
                       >
                         UPGRADE ({getDynamicPrice(next.price)})
                       </button>
                     ) : (
-                      <div className="text-[10px] text-amber-500 font-black py-2">MAX TIER</div>
+                      <div className="text-[9px] text-amber-500 font-black py-1">MAX TIER</div>
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); onSellWeapon(i, sellPrice); }}
-                      className="w-full py-2 rounded-xl text-[10px] font-black border-2 bg-red-900/40 text-red-400 border-red-900 hover:bg-red-800/60 transition-colors"
+                      className="w-full py-1 rounded-lg text-[9px] font-black border-2 bg-red-900/40 text-red-400 border-red-900 hover:bg-red-800/60 transition-colors"
                     >
                       SELL ({sellPrice})
                     </button>
@@ -215,11 +215,11 @@ export const Shop: React.FC<ShopProps> = ({
           </div>
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center pb-2">
           <button
             onClick={handleNextWave}
             disabled={isReady}
-            className={`font-black text-3xl px-16 py-5 rounded-2xl border-4 border-b-8 transition-all shadow-2xl ${isReady ? 'bg-stone-600 text-stone-400 border-stone-800 cursor-not-allowed' : 'bg-green-500 text-stone-950 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-1'}`}
+            className={`font-black text-xl md:text-2xl px-12 py-3 md:py-4 rounded-xl border-4 border-b-8 transition-all shadow-2xl ${isReady ? 'bg-stone-600 text-stone-400 border-stone-800 cursor-not-allowed' : 'bg-green-500 text-stone-950 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-1'}`}
           >
             {multiplayerTotalCount !== undefined ? (isReady ? `WAITING FOR OTHERS (${multiplayerReadyCount}/${multiplayerTotalCount})` : `NEXT WAVE (${multiplayerReadyCount}/${multiplayerTotalCount})`) : 'NEXT WAVE'}
           </button>
