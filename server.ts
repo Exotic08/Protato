@@ -40,6 +40,7 @@ async function startServer() {
 
   // Store player data and room info
   const players: { [key: string]: any } = {};
+  const rooms: { [key: string]: { materials: any[] } } = {}; // Temporary in-memory room data
 
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -92,6 +93,12 @@ async function startServer() {
       
       socket.join(roomId);
       
+      if (!rooms[roomId]) {
+        rooms[roomId] = {
+          materials: []
+        };
+      }
+      
       players[socket.id] = {
         id: socket.id,
         x: 800,
@@ -99,7 +106,8 @@ async function startServer() {
         hp: 100,
         maxHp: 100,
         roomId,
-        name
+        name,
+        isDead: false
       };
 
       // Send current players in this room to the new player
@@ -124,10 +132,17 @@ async function startServer() {
         players[socket.id].y = movementData.y;
         players[socket.id].hp = movementData.hp;
         players[socket.id].maxHp = movementData.maxHp;
+        
         const roomId = movementData.roomId || players[socket.id].roomId;
         
         if (roomId) {
           socket.to(roomId).emit('playerMoved', players[socket.id]);
+          
+          // Check for death
+          if (players[socket.id].hp <= 0 && !players[socket.id].isDead) {
+            players[socket.id].isDead = true;
+            io.to(roomId).emit('playerDied', socket.id);
+          }
         }
       }
     });
@@ -138,15 +153,32 @@ async function startServer() {
       }
     });
 
-    socket.on('materialsUpdate', (data) => {
-      if (data.roomId) {
-        socket.to(data.roomId).emit('materialsUpdate', data.materials);
+    socket.on('spawnMaterial', (data) => {
+      if (data.roomId && rooms[data.roomId]) {
+        const material = {
+          id: Math.random().toString(36).substr(2, 9),
+          x: data.x,
+          y: data.y,
+          value: data.value || 1,
+          radius: data.radius || 5
+        };
+        rooms[data.roomId].materials.push(material);
+        io.to(data.roomId).emit('materialsUpdate', rooms[data.roomId].materials);
       }
     });
 
     socket.on('materialPickedUp', (data) => {
-      if (data.roomId) {
-        socket.to(data.roomId).emit('materialPickedUp', { x: data.x, y: data.y });
+      if (data.roomId && rooms[data.roomId]) {
+        // Find by ID or by proximity if ID is missing
+        const index = rooms[data.roomId].materials.findIndex(m => 
+          (data.id && m.id === data.id) || 
+          (Math.abs(m.x - data.x) < 10 && Math.abs(m.y - data.y) < 10)
+        );
+        
+        if (index !== -1) {
+          rooms[data.roomId].materials.splice(index, 1);
+          io.to(data.roomId).emit('materialsUpdate', rooms[data.roomId].materials);
+        }
       }
     });
 
@@ -168,8 +200,14 @@ async function startServer() {
         const roomId = players[socket.id].roomId;
         if (roomId) {
           io.to(roomId).emit('playerDisconnected', socket.id);
-          // Optional: Reset all players ready state in that room if someone leaves to avoid stuck state
-          // Or just let the client handle the count reduction
+          
+          // Clean up room if empty
+          setTimeout(() => {
+            const roomPlayers = Object.values(players).filter(p => p.roomId === roomId);
+            if (roomPlayers.length === 0) {
+              delete rooms[roomId];
+            }
+          }, 5000);
         }
         delete players[socket.id];
       }

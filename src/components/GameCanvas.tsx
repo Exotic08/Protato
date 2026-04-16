@@ -137,6 +137,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     });
 
+    socketRef.current.on('playerDied', (id) => {
+      if (id === socketRef.current?.id) {
+        playerRef.current.isDead = true;
+        playerRef.current.hp = 0;
+        setIsDead(true);
+      } else if (otherPlayersRef.current[id]) {
+        otherPlayersRef.current[id].isDead = true;
+        otherPlayersRef.current[id].hp = 0;
+      }
+    });
+
     socketRef.current.on('playerRevived', (id) => {
       if (id === socketRef.current?.id) {
         playerRef.current.isDead = false;
@@ -177,29 +188,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     socketRef.current.on('materialsUpdate', (materials) => {
-      if (!isHost) {
-        materialsRef.current = materials;
-      }
-    });
-
-    socketRef.current.on('materialPickedUp', (data: { x: number, y: number }) => {
-      if (isHost) {
-        // Find material near the coordinates and remove it
-        const index = materialsRef.current.findIndex(m => 
-          Math.abs(m.x - data.x) < 5 && Math.abs(m.y - data.y) < 5
-        );
-        if (index !== -1) {
-          materialsRef.current.splice(index, 1);
-        }
-      } else {
-        // For clients, if they receive it, it's a broadcast from host
-        const index = materialsRef.current.findIndex(m => 
-          Math.abs(m.x - data.x) < 5 && Math.abs(m.y - data.y) < 5
-        );
-        if (index !== -1) {
-          materialsRef.current.splice(index, 1);
-        }
-      }
+      materialsRef.current = materials;
     });
 
     socketRef.current.on('enemyDamage', (data: { x: number, y: number, damage: number }) => {
@@ -686,12 +675,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             });
           }
 
-          materialsRef.current.push({
-            x: enemy.x,
-            y: enemy.y,
-            value: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 50 : (enemy.type === 'LOOT_GOBLIN' ? 20 : 1),
-            radius: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 15 : 5,
-          });
+          if (isMultiplayer) {
+            if (isHost) {
+              socketRef.current?.emit('spawnMaterial', {
+                x: enemy.x,
+                y: enemy.y,
+                value: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 50 : (enemy.type === 'LOOT_GOBLIN' ? 20 : 1),
+                radius: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 15 : 5,
+                roomId
+              });
+            }
+          } else {
+            materialsRef.current.push({
+              x: enemy.x,
+              y: enemy.y,
+              value: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 50 : (enemy.type === 'LOOT_GOBLIN' ? 20 : 1),
+              radius: enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2' ? 15 : 5,
+            });
+          }
           return false;
         }
         return true;
@@ -711,8 +712,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           setMaterialsCount(player.materials);
           setXpCount(player.xp);
           
-          if (roomId && socketRef.current) {
-            socketRef.current.emit('materialPickedUp', { x: m.x, y: m.y, roomId });
+          if (isMultiplayer && socketRef.current) {
+            socketRef.current.emit('materialPickedUp', { id: m.id, x: m.x, y: m.y, roomId });
           }
           return false;
         }
@@ -738,13 +739,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           radius: e.radius
         }));
         socketRef.current.emit('enemiesUpdate', { enemies: optimizedEnemies, roomId });
-        
-        const optimizedMaterials = materialsRef.current.map(m => ({
-          x: Math.round(m.x), 
-          y: Math.round(m.y), 
-          type: m.type
-        }));
-        socketRef.current.emit('materialsUpdate', { materials: optimizedMaterials, roomId });
         
         lastSyncTimeRef.current = now;
       }
