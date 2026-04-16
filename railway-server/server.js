@@ -63,11 +63,14 @@ io.on('connection', (socket) => {
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           };
           await userRef.set(initialData);
+          console.log('Đã tạo user mới thành công:', username);
           callback({ success: true, data: initialData });
         } else {
+          console.log('Đã tìm thấy user cũ:', username);
           callback({ success: true, data: doc.data() });
         }
       } catch (error) {
+        console.error('Login error:', error);
         callback({ success: false, error: error.message });
       }
     });
@@ -76,7 +79,8 @@ io.on('connection', (socket) => {
       if (!db) return;
       const { username, updates } = data;
       try {
-        await db.collection('users').doc(username).update(updates);
+        // Use set with merge: true to avoid NOT_FOUND error
+        await db.collection('users').doc(username).set(updates, { merge: true });
       } catch (error) {
         console.error('Error updating user data:', error);
       }
@@ -92,6 +96,8 @@ io.on('connection', (socket) => {
       id: socket.id,
       x: 800,
       y: 450,
+      hp: 100,
+      maxHp: 100,
       roomId,
       name
     };
@@ -116,6 +122,8 @@ io.on('connection', (socket) => {
     if (players[socket.id]) {
       players[socket.id].x = movementData.x;
       players[socket.id].y = movementData.y;
+      players[socket.id].hp = movementData.hp;
+      players[socket.id].maxHp = movementData.maxHp;
       const roomId = movementData.roomId || players[socket.id].roomId;
       
       if (roomId) {
@@ -145,6 +153,12 @@ io.on('connection', (socket) => {
   socket.on('enemyDamage', (data) => {
     if (data.roomId) {
       socket.to(data.roomId).emit('enemyDamage', { x: data.x, y: data.y, damage: data.damage });
+    }
+  });
+
+  socket.on('revivePlayer', (data) => {
+    if (data.roomId && data.targetId) {
+      io.to(data.roomId).emit('playerRevived', data.targetId);
     }
   });
 

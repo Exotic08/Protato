@@ -20,6 +20,7 @@ interface GameCanvasProps {
   uiScale: number;
   isHost: boolean;
   displayName: string;
+  isMultiplayer: boolean;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -36,15 +37,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   uiScale,
   isHost,
   displayName,
+  isMultiplayer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 4);
   const [timer, setTimer] = useState(currentWaveDuration);
   const [materialsCount, setMaterialsCount] = useState(initialMaterials);
   const [xpCount, setXpCount] = useState(initialXp);
+  const [isDead, setIsDead] = useState(false);
+  const [isSpectating, setIsSpectating] = useState(false);
+  const [reviveProgress, setReviveProgress] = useState<{ [id: string]: number }>({});
   
   // Game state refs to avoid closure issues in the loop
-  const playerRef = useRef<Player>({
+  const playerRef = useRef<Player & { isDead?: boolean }>({
     x: MAP_WIDTH / 2,
     y: MAP_HEIGHT / 2,
     radius: 15,
@@ -56,6 +61,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     materials: initialMaterials,
     weapons: playerWeapons,
     items: [],
+    isDead: false,
   });
 
   const enemiesRef = useRef<Enemy[]>([]);
@@ -72,11 +78,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const killsRef = useRef<number>(0);
   const joystickRef = useRef({ x: 0, y: 0 });
   const socketRef = useRef<Socket | null>(null);
-  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, targetX: number, targetY: number, id: string, name?: string } }>({});
+  const otherPlayersRef = useRef<{ [id: string]: { x: number, y: number, targetX: number, targetY: number, id: string, name?: string, hp?: number, maxHp?: number, isDead?: boolean } }>({});
   const enemiesTargetRef = useRef<{ [id: string]: Enemy }>({});
   const lastEmitTimeRef = useRef<number>(0);
   const lastSyncTimeRef = useRef<number>(0);
   const lastIsMovingRef = useRef<boolean>(false);
+  const lastHpRef = useRef<number>(playerStats.maxHp);
   const [isTouch, setIsTouch] = useState(false);
   const [ping, setPing] = useState<number>(0);
   const weaponStacksRef = useRef<{ [key: string]: number }>({});
@@ -124,6 +131,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         otherPlayersRef.current[player.id].targetX = player.x;
         otherPlayersRef.current[player.id].targetY = player.y;
         otherPlayersRef.current[player.id].name = player.name;
+        otherPlayersRef.current[player.id].hp = player.hp;
+        otherPlayersRef.current[player.id].maxHp = player.maxHp;
+        otherPlayersRef.current[player.id].isDead = player.isDead;
+      }
+    });
+
+    socketRef.current.on('playerRevived', (id) => {
+      if (id === socketRef.current?.id) {
+        playerRef.current.isDead = false;
+        playerRef.current.hp = playerRef.current.maxHp / 2;
+        setIsDead(false);
+        setIsSpectating(false);
+      } else if (otherPlayersRef.current[id]) {
+        otherPlayersRef.current[id].isDead = false;
+        otherPlayersRef.current[id].hp = (otherPlayersRef.current[id].maxHp || 100) / 2;
       }
     });
 
@@ -219,6 +241,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     playerRef.current.xp = initialXp;
     playerRef.current.level = initialLevel;
     
+    playerRef.current.isDead = false;
+    setIsDead(false);
+    setIsSpectating(false);
+    setReviveProgress({});
+    
     enemiesRef.current = [];
     projectilesRef.current = [];
     materialsRef.current = [];
@@ -265,42 +292,80 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // 1. Player Movement
       let dx = 0;
       let dy = 0;
-      if (keysRef.current['w'] || keysRef.current['arrowup']) dy -= 1;
-      if (keysRef.current['s'] || keysRef.current['arrowdown']) dy += 1;
-      if (keysRef.current['a'] || keysRef.current['arrowleft']) dx -= 1;
-      if (keysRef.current['d'] || keysRef.current['arrowright']) dx += 1;
 
-      if (joystickRef.current.x !== 0 || joystickRef.current.y !== 0) {
-        dx = joystickRef.current.x;
-        dy = joystickRef.current.y;
-      } else if (dx !== 0 || dy !== 0) {
-        const length = Math.sqrt(dx * dx + dy * dy);
-        dx /= length;
-        dy /= length;
+      if (player.isDead) {
+        // Dead players can't move
+      } else {
+        if (keysRef.current['w'] || keysRef.current['arrowup']) dy -= 1;
+        if (keysRef.current['s'] || keysRef.current['arrowdown']) dy += 1;
+        if (keysRef.current['a'] || keysRef.current['arrowleft']) dx -= 1;
+        if (keysRef.current['d'] || keysRef.current['arrowright']) dx += 1;
+
+        if (joystickRef.current.x !== 0 || joystickRef.current.y !== 0) {
+          dx = joystickRef.current.x;
+          dy = joystickRef.current.y;
+        } else if (dx !== 0 || dy !== 0) {
+          const length = Math.sqrt(dx * dx + dy * dy);
+          dx /= length;
+          dy /= length;
+        }
+
+        if (dx !== 0 || dy !== 0) {
+          const speed = (stats.speed / 100) * 3; // base speed multiplier
+          player.x += dx * speed;
+          player.y += dy * speed;
+        }
+
+        // Keep player in bounds
+        player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
+        player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
+
+        // Check for reviving others
+        if (isMultiplayer) {
+          const newReviveProgress = { ...reviveProgress };
+          let changed = false;
+
+          (Object.values(otherPlayersRef.current) as any[]).forEach(p => {
+            if (p.isDead) {
+              const dist = Math.sqrt((player.x - p.x) ** 2 + (player.y - p.y) ** 2);
+              if (dist < 50) {
+                newReviveProgress[p.id] = (newReviveProgress[p.id] || 0) + deltaTime;
+                changed = true;
+                if (newReviveProgress[p.id] >= 5) {
+                  socketRef.current?.emit('revivePlayer', { targetId: p.id, roomId });
+                  delete newReviveProgress[p.id];
+                }
+              } else if (newReviveProgress[p.id]) {
+                delete newReviveProgress[p.id];
+                changed = true;
+              }
+            }
+          });
+
+          if (changed) {
+            setReviveProgress(newReviveProgress);
+          }
+        }
       }
-
-      if (dx !== 0 || dy !== 0) {
-        const speed = (stats.speed / 100) * 3; // base speed multiplier
-        player.x += dx * speed;
-        player.y += dy * speed;
-      }
-
-      // Keep player in bounds
-      player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
-      player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
 
       // Emit movement to server (Throttled ~30fps)
       const now = Date.now();
-      const isMoving = dx !== 0 || dy !== 0;
-      if (socketRef.current && (isMoving || lastIsMovingRef.current) && now - lastEmitTimeRef.current > 33) {
+      const isMoving = !player.isDead && (dx !== 0 || dy !== 0);
+      const hpChanged = Math.abs(player.hp - lastHpRef.current) > 0.5;
+      
+      if (socketRef.current && (isMoving || lastIsMovingRef.current || hpChanged || player.isDead !== (lastHpRef.current <= 0)) && now - lastEmitTimeRef.current > 33) {
         socketRef.current.emit('playerMovement', { 
           x: Math.round(player.x), 
           y: Math.round(player.y), 
+          hp: Math.round(player.hp),
+          maxHp: Math.round(player.maxHp),
+          isDead: player.isDead,
           roomId, 
           name: displayName 
         });
         lastEmitTimeRef.current = now;
         lastIsMovingRef.current = isMoving;
+        lastHpRef.current = player.hp;
       }
 
       // 2. Wave Timer
@@ -470,8 +535,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
-        // Player collision
-        if (dist < player.radius + enemy.radius) {
+        // Player collision - ONLY for local player
+        const distToLocalPlayer = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
+        if (distToLocalPlayer < player.radius + enemy.radius) {
           if (enemy.type === 'EXPLOSIVE') {
             player.hp -= 5;
             enemy.hp = 0; // die on explosion
@@ -479,81 +545,89 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             player.hp -= enemy.damage / 30; // Damage per frame
           }
           shakeRef.current = 5; // Trigger shake
-          if (player.hp <= 0) {
-            onGameOver();
+          if (player.hp <= 0 && !player.isDead) {
+            if (isMultiplayer) {
+              player.isDead = true;
+              player.hp = 0;
+              setIsDead(true);
+            } else {
+              onGameOver();
+            }
           }
         }
       });
 
       // 5. Weapons Logic (Auto-aim)
-      player.weapons.forEach((weapon, index) => {
-        const cooldownKey = `weapon_${index}`;
-        if (!weaponCooldownsRef.current[cooldownKey]) weaponCooldownsRef.current[cooldownKey] = 0;
-        
-        weaponCooldownsRef.current[cooldownKey] -= deltaTime * 60;
+      if (!player.isDead) {
+        player.weapons.forEach((weapon, index) => {
+          const cooldownKey = `weapon_${index}`;
+          if (!weaponCooldownsRef.current[cooldownKey]) weaponCooldownsRef.current[cooldownKey] = 0;
+          
+          weaponCooldownsRef.current[cooldownKey] -= deltaTime * 60;
 
-        if (weaponCooldownsRef.current[cooldownKey] <= 0) {
-          let nearestEnemy: Enemy | null = null;
-          let minDist = weapon.range + stats.range;
+          if (weaponCooldownsRef.current[cooldownKey] <= 0) {
+            let nearestEnemy: Enemy | null = null;
+            let minDist = weapon.range + stats.range;
 
-          enemiesRef.current.forEach(enemy => {
-            const d = Math.sqrt((enemy.x - player.x) ** 2 + (enemy.y - player.y) ** 2);
-            if (d < minDist) {
-              minDist = d;
-              nearestEnemy = enemy;
-            }
-          });
-
-          if (nearestEnemy) {
-            weaponCooldownsRef.current[cooldownKey] = weapon.cooldown / (1 + stats.attackSpeed / 100);
-            
-            if (weapon.type === 'RANGED') {
-              const angle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
-              
-              // Handle LOW_HP passives
-              let extraFreeze = false;
-              if (weapon.passive?.trigger === 'LOW_HP' && player.hp < player.maxHp * 0.3) {
-                if (weapon.passive.type === 'FREEZE' && Math.random() < (weapon.passive.chance || 0) / 100) {
-                  extraFreeze = true;
-                }
+            enemiesRef.current.forEach(enemy => {
+              const d = Math.sqrt((enemy.x - player.x) ** 2 + (enemy.y - player.y) ** 2);
+              if (d < minDist) {
+                minDist = d;
+                nearestEnemy = enemy;
               }
+            });
 
-              for (let i = 0; i < (weapon.projectileCount || 1); i++) {
-                const spread = (Math.random() - 0.5) * 0.2;
+            if (nearestEnemy) {
+              weaponCooldownsRef.current[cooldownKey] = weapon.cooldown / (1 + stats.attackSpeed / 100);
+              
+              if (weapon.type === 'RANGED') {
+                const angle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
+                
+                // Handle LOW_HP passives
+                let extraFreeze = false;
+                if (weapon.passive?.trigger === 'LOW_HP' && player.hp < player.maxHp * 0.3) {
+                  if (weapon.passive.type === 'FREEZE' && Math.random() < (weapon.passive.chance || 0) / 100) {
+                    extraFreeze = true;
+                  }
+                }
+
+                for (let i = 0; i < (weapon.projectileCount || 1); i++) {
+                  const spread = (Math.random() - 0.5) * 0.2;
+                  const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
+                  projectilesRef.current.push({
+                    x: player.x,
+                    y: player.y,
+                    vx: Math.cos(angle + spread) * (weapon.projectileSpeed! / 60),
+                    vy: Math.sin(angle + spread) * (weapon.projectileSpeed! / 60),
+                    damage: (weapon.damage + stats.rangedDamage + bonusDmg) * (1 + stats.damagePct / 100),
+                    radius: 4,
+                    color: extraFreeze ? '#60a5fa' : '#fbbf24',
+                    life: 100,
+                  });
+                }
+              } else {
                 const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
-                projectilesRef.current.push({
-                  x: player.x,
-                  y: player.y,
-                  vx: Math.cos(angle + spread) * (weapon.projectileSpeed! / 60),
-                  vy: Math.sin(angle + spread) * (weapon.projectileSpeed! / 60),
-                  damage: (weapon.damage + stats.rangedDamage + bonusDmg) * (1 + stats.damagePct / 100),
-                  radius: 4,
-                  color: extraFreeze ? '#60a5fa' : '#fbbf24',
-                  life: 100,
+                const damage = (weapon.damage + stats.meleeDamage + bonusDmg) * (1 + stats.damagePct / 100);
+                nearestEnemy.hp -= damage;
+                
+                // Handle ON_HIT passives
+                if (weapon.passive?.trigger === 'ON_HIT') {
+                  if (weapon.passive.type === 'HEAL' && Math.random() < (weapon.passive.chance || 0) / 100) {
+                    player.hp = Math.min(player.maxHp, player.hp + weapon.passive.value);
+                  }
+                }
+
+                if (roomId && socketRef.current) {
+                  socketRef.current.emit('enemyDamage', { x: nearestEnemy.x, y: nearestEnemy.y, damage, roomId });
+                }
+                floatingTextsRef.current.push({
+                  x: nearestEnemy.x, y: nearestEnemy.y, text: Math.round(damage).toString(), color: '#ffffff', life: 30
                 });
               }
-            } else {
-              const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
-              const damage = (weapon.damage + stats.meleeDamage + bonusDmg) * (1 + stats.damagePct / 100);
-              nearestEnemy.hp -= damage;
-              
-              // Handle ON_HIT passives
-              if (weapon.passive?.trigger === 'ON_HIT') {
-                if (weapon.passive.type === 'HEAL' && Math.random() < (weapon.passive.chance || 0) / 100) {
-                  player.hp = Math.min(player.maxHp, player.hp + weapon.passive.value);
-                }
-              }
-
-              if (roomId && socketRef.current) {
-                socketRef.current.emit('enemyDamage', { x: nearestEnemy.x, y: nearestEnemy.y, damage, roomId });
-              }
-              floatingTextsRef.current.push({
-                x: nearestEnemy.x, y: nearestEnemy.y, text: Math.round(damage).toString(), color: '#ffffff', life: 30
-              });
             }
           }
-        }
-      });
+        });
+      }
 
       // 6. Update Projectiles
       projectilesRef.current = projectilesRef.current.filter(p => {
@@ -706,27 +780,64 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (p.id === socketRef.current?.id) return;
         
         ctx.save();
-        ctx.globalAlpha = 0.6;
-        ctx.fillStyle = '#92400e'; // darker amber
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, player.radius, player.radius + 4, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#451a03';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        // Simple eyes for other players
-        ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(p.x - 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(p.x + 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+        if (p.isDead) {
+          // Draw Corpse
+          ctx.globalAlpha = 0.4;
+          ctx.fillStyle = '#44403c';
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, player.radius, player.radius + 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw Tombstone icon
+          ctx.fillStyle = '#78716c';
+          ctx.fillRect(p.x - 5, p.y - 15, 10, 20);
+          ctx.fillRect(p.x - 10, p.y - 10, 20, 5);
+        } else {
+          ctx.globalAlpha = 0.6;
+          ctx.fillStyle = '#92400e'; // darker amber
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, player.radius, player.radius + 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#451a03';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Simple eyes for other players
+          ctx.fillStyle = 'white';
+          ctx.beginPath(); ctx.arc(p.x - 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(p.x + 4, p.y - 3, 3, 0, Math.PI*2); ctx.fill();
+        }
 
         // Draw Name
         if (p.name) {
           ctx.globalAlpha = 1;
           ctx.font = 'bold 12px Fredoka, sans-serif';
-          ctx.fillStyle = 'white';
+          ctx.fillStyle = p.isDead ? '#a8a29e' : 'white';
           ctx.textAlign = 'center';
-          ctx.fillText(p.name, p.x, p.y - player.radius - 10);
+          ctx.fillText(p.name + (p.isDead ? ' (DEAD)' : ''), p.x, p.y - player.radius - 15);
+        }
+
+        // Draw Health Bar for other players
+        if (!p.isDead && p.hp !== undefined && p.maxHp !== undefined) {
+          const barWidth = 30;
+          const barHeight = 4;
+          ctx.fillStyle = '#1c1917';
+          ctx.fillRect(p.x - barWidth / 2, p.y - player.radius - 10, barWidth, barHeight);
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(p.x - barWidth / 2, p.y - player.radius - 10, barWidth * (p.hp / p.maxHp), barHeight);
+        }
+
+        // Draw Revive Progress
+        if (p.isDead && reviveProgress[p.id]) {
+          const progress = reviveProgress[p.id] / 5;
+          const barWidth = 40;
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(p.x - barWidth/2, p.y + 20, barWidth, 6);
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(p.x - barWidth/2, p.y + 20, barWidth * progress, 6);
+          ctx.font = '10px sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.fillText('REVIVING...', p.x, p.y + 35);
         }
         
         ctx.restore();
@@ -775,27 +886,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       });
 
       // Draw Player (Potato)
-      ctx.fillStyle = '#d97706'; // amber-600
-      ctx.beginPath();
-      ctx.ellipse(player.x, player.y, player.radius + 2, player.radius + 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#78350f'; // amber-900
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      // Draw Player Name
-      ctx.font = 'bold 14px Fredoka, sans-serif';
-      ctx.fillStyle = 'white';
-      ctx.textAlign = 'center';
-      ctx.fillText(displayName, player.x, player.y - player.radius - 15);
-      
-      // Potato Eyes
-      ctx.fillStyle = 'white';
-      ctx.beginPath(); ctx.arc(player.x - 6, player.y - 4, 5, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(player.x + 6, player.y - 4, 5, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'black';
-      ctx.beginPath(); ctx.arc(player.x - 6, player.y - 4, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(player.x + 6, player.y - 4, 2, 0, Math.PI*2); ctx.fill();
+      if (player.isDead) {
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = '#44403c';
+        ctx.beginPath();
+        ctx.ellipse(player.x, player.y, player.radius + 2, player.radius + 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Draw Tombstone
+        ctx.fillStyle = '#78716c';
+        ctx.fillRect(player.x - 5, player.y - 15, 10, 20);
+        ctx.fillRect(player.x - 10, player.y - 10, 20, 5);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#d97706'; // amber-600
+        ctx.beginPath();
+        ctx.ellipse(player.x, player.y, player.radius + 2, player.radius + 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#78350f'; // amber-900
+        ctx.lineWidth = 3;
+        ctx.stroke();
+  
+        // Draw Player Name
+        ctx.font = 'bold 14px Fredoka, sans-serif';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.fillText(displayName, player.x, player.y - player.radius - 15);
+        
+        // Potato Eyes
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(player.x - 6, player.y - 4, 5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(player.x + 6, player.y - 4, 5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath(); ctx.arc(player.x - 6, player.y - 4, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(player.x + 6, player.y - 4, 2, 0, Math.PI*2); ctx.fill();
+      }
       
       // Draw Weapons
       const weaponSlots = [
@@ -967,6 +1092,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className={`w-2 h-2 rounded-full ${ping < 100 ? 'bg-green-500' : ping < 200 ? 'bg-amber-500' : 'bg-red-500'}`} />
         PING: {ping}ms
       </div>
+      {/* Death Overlay */}
+      {isDead && !isSpectating && (
+        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+          <h2 className="text-5xl font-bold text-red-500 mb-4 font-fredoka">YOU DIED</h2>
+          <p className="text-white mb-8 text-center max-w-md">
+            Wait for a friend to stand on your corpse for 5 seconds to revive you!
+          </p>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setIsSpectating(true)}
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all transform hover:scale-105"
+            >
+              Spectate
+            </button>
+            <button 
+              onClick={onGameOver}
+              className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all transform hover:scale-105"
+            >
+              Give Up
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isDead && isSpectating && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 px-4 py-2 rounded-full text-white font-bold z-40">
+          SPECTATING MODE - Wait for revive
+        </div>
+      )}
     </div>
   );
 };

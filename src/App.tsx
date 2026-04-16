@@ -781,8 +781,9 @@ export default function App() {
               wave={wave}
               roomId={roomId}
               uiScale={uiScale}
-              isHost={roomId ? roomData?.host === user?.uid : true}
+              isHost={roomId ? roomData?.host === (user?.uid || guestUser?.username) : true}
               displayName={displayName || 'Potato'}
+              isMultiplayer={!!roomId}
             />
           </motion.div>
         )}
