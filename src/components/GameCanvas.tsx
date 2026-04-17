@@ -84,6 +84,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const lastSyncTimeRef = useRef<number>(0);
   const lastIsMovingRef = useRef<boolean>(false);
   const lastHpRef = useRef<number>(playerStats.maxHp);
+  const reviveProgressRef = useRef<{ [id: string]: number }>({});
   const [isTouch, setIsTouch] = useState(false);
   const [ping, setPing] = useState<number>(0);
   const weaponStacksRef = useRef<{ [key: string]: number }>({});
@@ -311,28 +312,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Check for reviving others
         if (isMultiplayer) {
-          const newReviveProgress = { ...reviveProgress };
-          let changed = false;
-
+          let progressChanged = false;
           (Object.values(otherPlayersRef.current) as any[]).forEach(p => {
             if (p.isDead) {
               const dist = Math.sqrt((player.x - p.x) ** 2 + (player.y - p.y) ** 2);
-              if (dist < 50) {
-                newReviveProgress[p.id] = (newReviveProgress[p.id] || 0) + deltaTime;
-                changed = true;
-                if (newReviveProgress[p.id] >= 5) {
+              if (dist < 60) {
+                reviveProgressRef.current[p.id] = (reviveProgressRef.current[p.id] || 0) + deltaTime;
+                progressChanged = true;
+                
+                if (reviveProgressRef.current[p.id] >= 5) {
+                  console.log('Emitting revive for', p.id);
                   socketRef.current?.emit('revivePlayer', { targetId: p.id, roomId });
-                  delete newReviveProgress[p.id];
+                  delete reviveProgressRef.current[p.id];
                 }
-              } else if (newReviveProgress[p.id]) {
-                delete newReviveProgress[p.id];
-                changed = true;
+              } else if (reviveProgressRef.current[p.id]) {
+                delete reviveProgressRef.current[p.id];
+                progressChanged = true;
               }
             }
           });
-
-          if (changed) {
-            setReviveProgress(newReviveProgress);
+          
+          if (progressChanged) {
+            setReviveProgress({ ...reviveProgressRef.current });
           }
         }
       }
@@ -786,6 +787,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillStyle = '#78716c';
           ctx.fillRect(p.x - 5, p.y - 15, 10, 20);
           ctx.fillRect(p.x - 10, p.y - 10, 20, 5);
+
+          // Draw Revive Progress Bar if anyone is reviving this player
+          const progress = reviveProgress[p.id];
+          if (progress !== undefined) {
+            ctx.globalAlpha = 1.0;
+            const barWidth = 40;
+            ctx.fillStyle = '#1c1917';
+            ctx.fillRect(p.x - barWidth/2, p.y - 30, barWidth, 6);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(p.x - barWidth/2, p.y - 30, barWidth * (progress / 5), 6);
+          }
         } else {
           ctx.globalAlpha = 0.6;
           ctx.fillStyle = '#92400e'; // darker amber

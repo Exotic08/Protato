@@ -131,6 +131,11 @@ io.on('connection', (socket) => {
     
     socket.emit('currentPlayers', roomPlayers);
     
+    // Also send current materials in this room
+    if (rooms[roomId] && rooms[roomId].materials) {
+      socket.emit('materialsUpdate', rooms[roomId].materials);
+    }
+    
     // Notify others in the room
     socket.to(roomId).emit('newPlayer', players[socket.id]);
     
