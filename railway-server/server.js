@@ -51,28 +51,39 @@ io.on('connection', (socket) => {
 
     socket.on('login', async (username, callback) => {
       if (!db) {
+        console.error('Login failed: Database not initialized');
         return callback({ success: false, error: 'Database not initialized' });
       }
+      if (!username || typeof username !== 'string' || username.trim() === '') {
+        return callback({ success: false, error: 'Invalid username' });
+      }
+      
+      const cleanUsername = username.trim();
       try {
-        const userRef = db.collection('users').doc(username);
+        const userRef = db.collection('users').doc(cleanUsername);
         const doc = await userRef.get();
+        
         if (!doc.exists) {
           const initialData = {
-            username,
+            username: cleanUsername,
             stats: { totalKills: 0, maxWave: 0, totalMaterials: 0 },
             unlockedCharacters: ['potato'],
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           };
           await userRef.set(initialData);
-          console.log('Đã tạo user mới thành công:', username);
+          console.log('Đã tạo user mới thành công:', cleanUsername);
           callback({ success: true, data: initialData });
         } else {
-          console.log('Đã tìm thấy user cũ:', username);
+          console.log('Đã tìm thấy user cũ:', cleanUsername);
           callback({ success: true, data: doc.data() });
         }
       } catch (error) {
-        console.error('Login error:', error);
-        callback({ success: false, error: error.message });
+        console.error('Login error for user', cleanUsername, ':', error);
+        if (error.code === 5) {
+          callback({ success: false, error: 'Database or collection not found. Please check Firestore setup.' });
+        } else {
+          callback({ success: false, error: error.message });
+        }
       }
     });
 
