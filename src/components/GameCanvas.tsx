@@ -393,6 +393,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (wave >= 5 && rand < 0.15) type = 'TANK';
           if (wave >= 7 && rand < 0.2) type = 'RANGED';
           if (wave >= 9 && rand < 0.25) type = 'EXPLOSIVE';
+          if (wave >= 4 && rand < 0.1) type = 'SWARMER';
+          if (wave >= 8 && rand < 0.1) type = 'SHIELDER';
+          if (wave >= 12 && rand < 0.08) type = 'DIVIDER';
+          if (wave >= 15 && rand < 0.05) type = 'TELEPORTER';
           if (rand < 0.02) type = 'LOOT_GOBLIN'; // 2% chance to spawn a loot goblin
 
           // Scale stats per wave
@@ -409,6 +413,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             case 'RANGED': speed = 1.0; hp *= 0.8; color = '#8b5cf6'; radius = 12; break;
             case 'EXPLOSIVE': speed = 2.2; hp *= 0.6; color = '#fbbf24'; radius = 14; break;
             case 'LOOT_GOBLIN': speed = 2.5; hp *= 2.0; color = '#10b981'; radius = 15; damage = 0; break;
+            case 'SWARMER': speed = 3.5; hp *= 0.3; color = '#ec4899'; radius = 8; break;
+            case 'SHIELDER': speed = 0.8; hp *= 2.0; color = '#64748b'; radius = 16; break;
+            case 'DIVIDER': speed = 1.0; hp *= 2.5; color = '#8b5cf6'; radius = 20; break;
+            case 'TELEPORTER': speed = 1.5; hp *= 1.2; color = '#06b6d4'; radius = 14; break;
           }
 
           enemiesRef.current.push({
@@ -466,6 +474,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const edy = targetY - enemy.y;
         const dist = Math.sqrt(edx * edx + edy * edy);
 
+        // Update Status Effects
+        if (enemy.statusEffects && enemy.statusEffects.length > 0) {
+          enemy.statusEffects = enemy.statusEffects.filter(effect => {
+            effect.timer += deltaTime;
+            
+            if (effect.type === 'POISON') {
+              // Apply poison damage every 0.5s
+              const totalTicks = effect.duration * 2;
+              const damagePerTick = effect.value / totalTicks;
+              
+              if (Math.floor(effect.timer * 2) > Math.floor((effect.timer - deltaTime) * 2)) {
+                enemy.hp -= damagePerTick;
+                if (isHost && roomId && socketRef.current) {
+                  // Notify others if needed, but hp is synced via enemiesUpdate anyway
+                }
+              }
+            }
+            
+            return effect.timer < effect.duration;
+          });
+        }
+
         if (isHost && dist > 0.1) {
           if (enemy.type === 'RANGED') {
             if (dist > 200) {
@@ -519,6 +549,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 });
               }
             }
+          } else if (enemy.type === 'TELEPORTER') {
+            enemy.cooldown = (enemy.cooldown || 0) - deltaTime * 60;
+            if (enemy.cooldown <= 0) {
+              enemy.cooldown = 240; // 4 seconds
+              // Teleport near target
+              const angle = Math.random() * Math.PI * 2;
+              const dist = 100 + Math.random() * 100;
+              enemy.x = targetX + Math.cos(angle) * dist;
+              enemy.y = targetY + Math.sin(angle) * dist;
+              floatingTextsRef.current.push({
+                x: enemy.x, y: enemy.y, text: 'ZAP!', color: '#06b6d4', life: 30
+              });
+            } else {
+              enemy.x += (edx / dist) * enemy.speed;
+              enemy.y += (edy / dist) * enemy.speed;
+            }
+          } else if (enemy.type === 'SWARMER') {
+            // Jittery movement
+            const jitter = (Math.random() - 0.5) * 2;
+            enemy.x += (edx / dist) * enemy.speed + jitter;
+            enemy.y += (edy / dist) * enemy.speed + jitter;
           } else {
             enemy.x += (edx / dist) * enemy.speed;
             enemy.y += (edy / dist) * enemy.speed;
@@ -593,6 +644,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     radius: 4,
                     color: extraFreeze ? '#60a5fa' : '#fbbf24',
                     life: 100,
+                    passive: weapon.passive
                   });
                 }
               } else {
@@ -604,6 +656,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 if (weapon.passive?.trigger === 'ON_HIT') {
                   if (weapon.passive.type === 'HEAL' && Math.random() < (weapon.passive.chance || 0) / 100) {
                     player.hp = Math.min(player.maxHp, player.hp + weapon.passive.value);
+                  } else if (weapon.passive.type === 'POISON' && Math.random() < (weapon.passive.chance || 0) / 100) {
+                    if (!nearestEnemy.statusEffects) nearestEnemy.statusEffects = [];
+                    // Add poison if not already present or refresh it
+                    const existing = nearestEnemy.statusEffects.find(e => e.type === 'POISON');
+                    if (existing) {
+                      existing.timer = 0; // Refresh
+                      existing.value = Math.max(existing.value, weapon.passive.value);
+                    } else {
+                      nearestEnemy.statusEffects.push({
+                        type: 'POISON',
+                        value: weapon.passive.value,
+                        duration: weapon.passive.duration || 5,
+                        timer: 0
+                      });
+                    }
                   }
                 }
 
@@ -638,6 +705,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           enemiesRef.current.forEach(enemy => {
             if (!hit && Math.sqrt((p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2) < p.radius + enemy.radius) {
               enemy.hp -= p.damage;
+              
+              // Handle ranged passives
+              if (p.passive?.trigger === 'ON_HIT') {
+                if (p.passive.type === 'POISON' && Math.random() < (p.passive.chance || 0) / 100) {
+                  if (!enemy.statusEffects) enemy.statusEffects = [];
+                  const existing = enemy.statusEffects.find(e => e.type === 'POISON');
+                  if (existing) {
+                    existing.timer = 0;
+                    existing.value = Math.max(existing.value, p.passive.value);
+                  } else {
+                    enemy.statusEffects.push({
+                      type: 'POISON',
+                      value: p.passive.value,
+                      duration: p.passive.duration || 5,
+                      timer: 0
+                    });
+                  }
+                }
+              }
+
               if (roomId && socketRef.current) {
                 socketRef.current.emit('enemyDamage', { x: enemy.x, y: enemy.y, damage: p.damage, roomId });
               }
@@ -674,6 +761,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             floatingTextsRef.current.push({
               x: enemy.x, y: enemy.y, text: 'CRATE DROPPED!', color: '#10b981', life: 60
             });
+          }
+
+          if (enemy.type === 'DIVIDER') {
+            // Spawn 3 basic enemies
+            for (let i = 0; i < 3; i++) {
+              enemiesRef.current.push({
+                id: 'sub_' + Math.random().toString(36).substr(2, 5),
+                x: enemy.x + (Math.random() - 0.5) * 20,
+                y: enemy.y + (Math.random() - 0.5) * 20,
+                radius: 10,
+                hp: 15,
+                maxHp: 15,
+                speed: 1.5,
+                damage: 1,
+                type: 'BASIC',
+                color: '#ef4444',
+                cooldown: 0
+              });
+            }
           }
 
           if (isMultiplayer) {
@@ -862,13 +968,58 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Draw Enemies
       enemiesRef.current.forEach(enemy => {
-        ctx.fillStyle = enemy.color;
+        const isPoisoned = enemy.statusEffects?.some(e => e.type === 'POISON');
+        ctx.fillStyle = isPoisoned ? '#22c55e' : enemy.color;
+        
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#1c1917'; // stone-900
+        ctx.strokeStyle = isPoisoned ? '#166534' : '#1c1917'; // stone-900 or dark green
         ctx.lineWidth = 3;
         ctx.stroke();
+
+        // Decorative details for specific types
+        if (enemy.type === 'SHIELDER') {
+          // Find target to face the shield
+          let targetX = player.x;
+          let targetY = player.y;
+          let minDist = Math.sqrt((player.x - enemy.x)**2 + (player.y - enemy.y)**2);
+          Object.values(otherPlayersRef.current).forEach((p: any) => {
+            const d = Math.sqrt((p.x - enemy.x)**2 + (p.y - enemy.y)**2);
+            if (d < minDist) { minDist = d; targetX = p.x; targetY = p.y; }
+          });
+          const angle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, enemy.radius + 4, angle - 0.8, angle + 0.8);
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        } else if (enemy.type === 'DIVIDER') {
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          ctx.beginPath(); ctx.arc(enemy.x - 5, enemy.y, 4, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(enemy.x + 5, enemy.y, 4, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(enemy.x, enemy.y + 5, 4, 0, Math.PI*2); ctx.fill();
+        } else if (enemy.type === 'TELEPORTER') {
+          ctx.strokeStyle = '#22d3ee';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius + (Math.sin(Date.now()/100)*3), 0, Math.PI*2); ctx.stroke();
+        } else if (enemy.type === 'SWARMER') {
+          ctx.fillStyle = '#f472b6';
+          for (let i = 0; i < 4; i++) {
+            const ang = (i / 4) * Math.PI * 2 + (Date.now()/500);
+            ctx.beginPath();
+            ctx.arc(enemy.x + Math.cos(ang)*enemy.radius, enemy.y + Math.sin(ang)*enemy.radius, 2, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+
+        // Poison bubbles effect
+        if (isPoisoned && Math.random() < 0.1) {
+          ctx.fillStyle = '#4ade80';
+          ctx.beginPath();
+          ctx.arc(enemy.x + (Math.random()-0.5)*enemy.radius*2, enemy.y - (Math.random())*enemy.radius, 2, 0, Math.PI*2);
+          ctx.fill();
+        }
         
         // Enemy HP bar
         if (enemy.hp < enemy.maxHp) {

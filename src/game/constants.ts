@@ -36,7 +36,7 @@ export const WEAPONS: Weapon[] = [
   { id: 'pistol_4', baseId: 'pistol', name: 'Pistol IV', type: 'RANGED', damage: 45, cooldown: 40, range: 400, projectileSpeed: 700, projectileCount: 1, knockback: 15, icon: 'Crosshair', rarity: 4, price: 100, description: 'Súng lục huyền thoại' },
 
   // KNIFE Tiers
-  { id: 'knife_1', baseId: 'knife', name: 'Knife I', type: 'MELEE', damage: 15, cooldown: 45, range: 80, knockback: 10, icon: 'Sword', rarity: 1, price: 5, description: 'Dao găm cơ bản' },
+  { id: 'knife_1', baseId: 'knife', name: 'Knife I', type: 'MELEE', damage: 15, cooldown: 45, range: 80, knockback: 10, icon: 'Sword', rarity: 1, price: 5, description: 'Dao găm cơ bản', passive: { trigger: 'ON_HIT', type: 'POISON', value: 5, chance: 20, duration: 5, description: '20% cơ hội gây độc (5 sát thương/5s)' } },
   { id: 'knife_2', baseId: 'knife', name: 'Knife II', type: 'MELEE', damage: 25, cooldown: 40, range: 90, knockback: 12, icon: 'Sword', rarity: 2, price: 15, description: 'Dao găm sắc bén' },
   { id: 'knife_3', baseId: 'knife', name: 'Knife III', type: 'MELEE', damage: 45, cooldown: 35, range: 100, knockback: 15, icon: 'Sword', rarity: 3, price: 40, description: 'Dao găm sát thủ' },
   { id: 'knife_4', baseId: 'knife', name: 'Knife IV', type: 'MELEE', damage: 80, cooldown: 30, range: 120, knockback: 20, icon: 'Sword', rarity: 4, price: 100, description: 'Dao găm huyền thoại' },

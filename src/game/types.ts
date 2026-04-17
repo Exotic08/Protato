@@ -58,9 +58,10 @@ export type PassiveTrigger = 'ON_KILL' | 'ON_CRIT' | 'LOW_HP' | 'ON_HIT';
 
 export interface PassiveAbility {
   trigger: PassiveTrigger;
-  type: 'STAT_BOOST' | 'HEAL' | 'FREEZE' | 'EXPLODE' | 'DAMAGE_STACK';
+  type: 'STAT_BOOST' | 'HEAL' | 'FREEZE' | 'EXPLODE' | 'DAMAGE_STACK' | 'POISON';
   value: number;
   chance?: number;
+  duration?: number;
   description: string;
 }
 
@@ -109,7 +110,15 @@ export interface Player extends Entity {
   items: Item[];
 }
 
-export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN';
+export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN' | 'SWARMER' | 'SHIELDER' | 'DIVIDER' | 'TELEPORTER';
+
+export interface StatusEffect {
+  type: 'POISON' | 'FREEZE' | 'BURN';
+  value: number;
+  duration: number;
+  timer: number;
+  sourceId?: string;
+}
 
 export interface Enemy extends Entity {
   id: string;
@@ -119,6 +128,7 @@ export interface Enemy extends Entity {
   color: string;
   cooldown?: number;
   state?: any;
+  statusEffects?: StatusEffect[];
 }
 
 export interface Projectile {
@@ -131,6 +141,7 @@ export interface Projectile {
   color: string;
   life: number;
   isEnemy?: boolean;
+  passive?: PassiveAbility;
 }
 
 export interface Material {
