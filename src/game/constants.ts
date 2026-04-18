@@ -2,7 +2,7 @@ import { Stats, Weapon, Item, Character } from './types';
 
 export const INITIAL_STATS: Stats = {
   maxHp: 10,
-  hpRegen: 0,
+  hpRegen: 0.5,
   lifeSteal: 0,
   damagePct: 0,
   meleeDamage: 0,
@@ -10,11 +10,11 @@ export const INITIAL_STATS: Stats = {
   attackSpeed: 0,
   range: 0,
   armor: 0,
-  dodge: 0,
+  dodge: 5,
   speed: 100, // base speed pixels per second
   luck: 0,
   harvest: 0,
-  critChance: 0,
+  critChance: 5,
   xpGain: 0,
   pickupRange: 100,
   shopPrice: 0,

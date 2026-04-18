@@ -9,10 +9,13 @@ interface LevelUpProps {
 
 const STAT_OPTIONS: { name: string; stat: keyof Stats; value: number; icon: any; color: string }[] = [
   { name: '+2 Max HP', stat: 'maxHp', value: 2, icon: Heart, color: 'text-red-400' },
-  { name: '+5% Damage', stat: 'damagePct', value: 5, icon: Target, color: 'text-orange-400' },
+  { name: '+2 HP Regen', stat: 'hpRegen', value: 2, icon: Heart, color: 'text-pink-400' },
+  { name: '+10% Damage', stat: 'damagePct', value: 10, icon: Target, color: 'text-orange-400' },
   { name: '+10% Attack Speed', stat: 'attackSpeed', value: 10, icon: Zap, color: 'text-yellow-400' },
   { name: '+5% Speed', stat: 'speed', value: 5, icon: Move, color: 'text-blue-400' },
-  { name: '+1 Armor', stat: 'armor', value: 1, icon: Shield, color: 'text-slate-400' },
+  { name: '+2 Armor', stat: 'armor', value: 2, icon: Shield, color: 'text-slate-400' },
+  { name: '+5% Dodge', stat: 'dodge', value: 5, icon: Move, color: 'text-purple-400' },
+  { name: '+5% Crit Chance', stat: 'critChance', value: 5, icon: Target, color: 'text-red-600' },
 ];
 
 export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat }) => {

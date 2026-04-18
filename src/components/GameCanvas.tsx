@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Player, Enemy, Projectile, Material, FloatingText, GameState, Stats, Weapon, EnemyType } from '../game/types';
+import { Player, Enemy, Projectile, Material, FloatingText, GameState, Stats, Weapon, EnemyType, StatusEffect } from '../game/types';
 import { INITIAL_STATS, WAVE_DURATION, XP_PER_LEVEL, MAP_WIDTH, MAP_HEIGHT, GRID_SIZE_X, GRID_SIZE_Y } from '../game/constants';
 import { Joystick } from './Joystick';
 import { io, Socket } from 'socket.io-client';
+import { motion, AnimatePresence } from 'motion/react';
+import { Flame, Droplets, Snowflake, Wind, Heart, Shield, Zap, Target } from 'lucide-react';
 import { playShootSound, playMagicSound, playMeleeSound, playHitSound, playPlayerHitSound, playCoinSound, playExplosionSound, playDashSound, playSummonSound, playDodgeSound, playEnemyDeathSound } from '../game/audio';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; }
@@ -47,6 +49,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 4);
   const [timer, setTimer] = useState(currentWaveDuration);
+  const [playerHp, setPlayerHp] = useState(playerStats.maxHp);
+  const [playerStatusEffects, setPlayerStatusEffects] = useState<StatusEffect[]>([]);
   const [materialsCount, setMaterialsCount] = useState(initialMaterials);
   const [xpCount, setXpCount] = useState(initialXp);
   const [isDead, setIsDead] = useState(false);
@@ -66,6 +70,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     materials: initialMaterials,
     weapons: playerWeapons,
     items: [],
+    statusEffects: [],
     isDead: false,
   });
 
@@ -189,13 +194,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       delete otherPlayersRef.current[id];
     });
 
-    socketRef.current.on('enemiesUpdate', (enemies: Enemy[]) => {
+    socketRef.current.on('enemiesUpdate', (data: any) => {
+      const enemies = Array.isArray(data) ? data : data?.enemies;
+      if (!enemies || !Array.isArray(enemies)) return;
+
       if (!isHost) {
         const newTargetMap: { [id: string]: Enemy } = {};
         enemies.forEach(e => {
+          if (!e) return;
           newTargetMap[e.id] = e;
           
-          const existing = enemiesRef.current.find(curr => curr.id === e.id);
+          const existing = enemiesRef.current.find(curr => curr && curr.id === e.id);
           if (!existing) {
             enemiesRef.current.push({ ...e });
           } else {
@@ -207,7 +216,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         });
         
-        enemiesRef.current = enemiesRef.current.filter(curr => newTargetMap[curr.id]);
+        enemiesRef.current = enemiesRef.current.filter(curr => curr && newTargetMap[curr.id]);
         enemiesTargetRef.current = newTargetMap;
       }
     });
@@ -217,8 +226,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     socketRef.current.on('enemyDamage', (data: { id: string, damage: number }) => {
-      if (isHost) {
-        const enemy = enemiesRef.current.find(e => e.id === data.id);
+      if (isHost && enemiesRef.current) {
+        const enemy = enemiesRef.current.find(e => e && e.id === data.id);
         if (enemy) {
           enemy.hp -= data.damage;
         }
@@ -274,6 +283,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const update = (deltaTime: number) => {
       if (gameState !== 'PLAYING') return;
+      const now = Date.now();
 
       const weaponStyleBaseIds = ['flamethrower', 'ice_staff', 'thunder_staff', 'magic_crossbow', 'poison_flask', 'time_bomb'];
       const player = playerRef.current;
@@ -299,6 +309,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Apply HP Regen
       if (!player.isDead && player.hp < player.maxHp) {
         player.hp = Math.min(player.maxHp, player.hp + stats.hpRegen * deltaTime);
+      }
+
+      // Process Player Status Effects
+      if (player.statusEffects && player.statusEffects.length > 0) {
+        player.statusEffects = player.statusEffects.filter(effect => {
+          effect.timer += deltaTime;
+          
+          if (effect.type === 'POISON' || effect.type === 'BURN') {
+            const ticksPerSec = effect.type === 'POISON' ? 2 : 5;
+            const totalTicks = effect.duration * ticksPerSec;
+            const damagePerTick = effect.value / totalTicks;
+            
+            if (Math.floor(effect.timer * ticksPerSec) > Math.floor((effect.timer - deltaTime) * ticksPerSec)) {
+              player.hp -= damagePerTick;
+            }
+          }
+          
+          return effect.timer < effect.duration;
+        });
+      }
+
+      // Sync player state to React (throttled)
+      if (now - lastSyncTimeRef.current > 100) {
+        setPlayerHp(player.hp);
+        setPlayerStatusEffects([...(player.statusEffects || [])]);
+        lastSyncTimeRef.current = now;
       }
 
       // Check for item cooldowns
@@ -358,7 +394,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         if (dx !== 0 || dy !== 0) {
-          const speed = (stats.speed / 100) * 3; // base speed multiplier
+          // Calculate effective speed
+          let playerSpeedMultiplier = 1;
+          if (player.statusEffects) {
+            player.statusEffects.forEach(ef => {
+              if (ef.type === 'SLOW') playerSpeedMultiplier *= (1 - ef.value / 100);
+            });
+          }
+          const speed = (stats.speed / 100) * 3 * playerSpeedMultiplier; // base speed multiplier
           player.x += dx * speed;
           player.y += dy * speed;
           idleTimerRef.current = 0;
@@ -399,7 +442,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // Emit movement to server (Throttled ~30fps)
-      const now = Date.now();
       const isMoving = !player.isDead && (dx !== 0 || dy !== 0);
       const hpChanged = Math.abs(player.hp - lastHpRef.current) > 0.5;
       
@@ -554,6 +596,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         let minDist = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
 
         (Object.values(otherPlayersRef.current) as { x: number, y: number, id: string }[]).forEach(p => {
+          if (!p) return;
           const d = Math.sqrt((p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2);
           if (d < minDist) {
             minDist = d;
@@ -746,16 +789,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
           } else {
             let actualDamage = 0;
+            const armorReduction = stats.armor >= 0 ? (stats.armor / (stats.armor + 15)) : 0;
+            const enemyDmg = enemy.type === 'EXPLOSIVE' ? 5 : (enemy.damage / 30);
+            
+            actualDamage = Math.max(0.01, enemyDmg * (1 - armorReduction));
+            
             if (enemy.type === 'EXPLOSIVE') {
-              actualDamage = Math.max(0, 5 - stats.armor);
               enemy.hp = 0; // die on explosion
-            } else {
-              actualDamage = Math.max(0.01, (enemy.damage / 30) - (stats.armor / 60)); // Standardize armor damage reduction roughly
             }
+
             player.hp -= actualDamage;
             shakeRef.current = 5; // Trigger shake
             playPlayerHitSound();
             spawnParticles(player.x, player.y, '#ef4444', 10);
+
+            // Apply debuff to player
+            if (enemy.type === 'TANK' || enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2') {
+              if (!player.statusEffects) player.statusEffects = [];
+              if (!player.statusEffects.some(ef => ef.type === 'SLOW')) {
+                player.statusEffects.push({ type: 'SLOW', value: 40, duration: 2, timer: 0 });
+              }
+            }
             
             // Handle Oxygen Tank
             if (player.items.some(i => i.id === 'oxygen_tank') && (itemCooldownsRef.current['oxygen_tank'] || 0) <= 0) {
@@ -993,7 +1047,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               spawnParticles(player.x, player.y, '#94a3b8', 6);
               return false; // Dodged, but projectile still destroyed
             }
-            const actualDmg = Math.max(1, p.damage - stats.armor);
+            const armorReduction = stats.armor >= 0 ? (stats.armor / (stats.armor + 15)) : 0;
+            const actualDmg = Math.max(0.01, p.damage * (1 - armorReduction));
             player.hp -= actualDmg;
             shakeRef.current = 3;
             playPlayerHitSound(); // PLAYER HIT SOUND
@@ -1145,6 +1200,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // 7. Enemy Death & Materials
       enemiesRef.current = enemiesRef.current.filter(enemy => {
+        if (!enemy) return false;
         if (enemy.hp <= 0) {
           killsRef.current += 1;
           if (onMissionProgress) onMissionProgress('KILLS', 1);
@@ -1340,7 +1396,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Draw Other Players
       (Object.values(otherPlayersRef.current) as any[]).forEach(p => {
-        if (p.id === socketRef.current?.id) return;
+        if (!p || p.id === socketRef.current?.id) return;
         
         ctx.save();
         if (p.isDead) {
@@ -1541,7 +1597,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
         
         // Enemy HP bar
-        if (enemy.hp < enemy.maxHp) {
+        if (enemy && enemy.hp !== undefined && enemy.maxHp !== undefined && enemy.hp < enemy.maxHp) {
           const barWidth = enemy.radius * 2.5;
           const barHeight = 4;
           const bx = enemy.x - barWidth/2;
@@ -1723,33 +1779,60 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       });
 
       // Minimap
+      // Improved Minimap Logic
       const mmWidth = 150;
       const mmHeight = mmWidth * (MAP_HEIGHT / MAP_WIDTH);
       const mmX = MAP_WIDTH - mmWidth - 20;
       const mmY = 20;
       
       ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.fillRect(mmX, mmY, mmWidth, mmHeight);
-      ctx.strokeStyle = '#444';
-      ctx.strokeRect(mmX, mmY, mmWidth, mmHeight);
+      // Background and border
+      ctx.fillStyle = 'rgba(12, 10, 9, 0.8)';
+      ctx.beginPath();
+      ctx.roundRect?.(mmX - 5, mmY - 5, mmWidth + 10, mmHeight + 10, 10);
+      ctx.fill();
+      ctx.strokeStyle = '#292524';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // "MINIMAP" label on canvas
+      ctx.fillStyle = '#57534e';
+      ctx.font = 'bold 8px Fredoka, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('MINIMAP', mmX + mmWidth, mmY + mmHeight + 8);
       
       const scaleX = mmWidth / MAP_WIDTH;
       const scaleY = mmHeight / MAP_HEIGHT;
       
-      // Draw player
-      ctx.fillStyle = '#60a5fa';
-      ctx.beginPath();
-      ctx.arc(mmX + playerRef.current.x * scaleX, mmY + playerRef.current.y * scaleY, 2, 0, Math.PI * 2);
-      ctx.fill();
-      
+      // Draw other players
+      Object.values(otherPlayersRef.current).forEach((p: any) => {
+        if (p && !p.isDead) {
+          ctx.fillStyle = '#10b981'; // Green for allies
+          ctx.beginPath();
+          ctx.arc(mmX + p.x * scaleX, mmY + p.y * scaleY, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
       // Draw enemies
       ctx.fillStyle = '#ef4444';
       enemiesRef.current.forEach(e => {
+        if (!e) return;
         ctx.beginPath();
-        ctx.arc(mmX + e.x * scaleX, mmY + e.y * scaleY, 1, 0, Math.PI * 2);
+        ctx.arc(mmX + e.x * scaleX, mmY + e.y * scaleY, 1.5, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      // Draw local player
+      ctx.fillStyle = '#60a5fa'; // Blue for local
+      ctx.beginPath();
+      ctx.arc(mmX + playerRef.current.x * scaleX, mmY + playerRef.current.y * scaleY, 3, 0, Math.PI * 2);
+      ctx.fill();
+      // Glow for local player
+      ctx.shadowBlur = 5;
+      ctx.shadowColor = '#60a5fa';
+      ctx.stroke();
+      
       ctx.restore();
 
       ctx.restore();
@@ -1779,30 +1862,130 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         className="bg-slate-800 rounded-lg shadow-2xl border-4 border-slate-700"
       />
       
-      {/* HUD */}
-      <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
-        <div className="bg-black/50 p-2 rounded border border-white/10 text-amber-500 font-mono font-bold">
-          WAVE: {wave}
+      {/* HUD Container */}
+      <div className="absolute top-4 left-4 flex flex-col gap-4 pointer-events-none w-64">
+        {/* Player Vital Stats */}
+        <div className="bg-stone-900/80 backdrop-blur-md p-3 rounded-2xl border-2 border-stone-800 shadow-2xl flex flex-col gap-2">
+          <div className="flex justify-between items-center px-1">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-red-500 fill-red-500/20" />
+              <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest">Vitality</span>
+            </div>
+            <span className="text-xs font-black text-stone-300">{Math.ceil(playerHp)} / {playerStats.maxHp}</span>
+          </div>
+          
+          {/* Health Bar */}
+          <div className="h-4 bg-stone-950 rounded-full border-2 border-stone-800 overflow-hidden relative shadow-inner">
+            <motion.div 
+              initial={{ width: '100%' }}
+              animate={{ width: `${(playerHp / playerStats.maxHp) * 100}%` }}
+              className="h-full bg-gradient-to-r from-red-600 to-red-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <div className="bg-stone-950/50 px-2 py-1.5 rounded-lg border border-stone-800 flex items-center justify-between">
+              <Shield className="w-3 h-3 text-blue-400" />
+              <span className="text-[10px] font-black text-blue-400">{playerStats.armor}</span>
+            </div>
+            <div className="bg-stone-950/50 px-2 py-1.5 rounded-lg border border-stone-800 flex items-center justify-between">
+              <Zap className="w-3 h-3 text-amber-500" />
+              <span className="text-[10px] font-black text-amber-500">{playerStats.speed}%</span>
+            </div>
+          </div>
         </div>
-        <div className="bg-black/50 p-2 rounded border border-white/10 text-white font-mono">
-          TIME: {timer}s
+
+        {/* Wave & Time */}
+        <div className="flex gap-2">
+           <div className="bg-stone-900/80 backdrop-blur-md px-4 py-2 rounded-xl border-2 border-stone-800 shadow-xl flex flex-col items-center min-w-[80px]">
+             <span className="text-[8px] font-black text-stone-500 uppercase tracking-tighter">Wave</span>
+             <span className="text-lg font-black text-amber-500 leading-none">{wave}</span>
+           </div>
+           <div className="bg-stone-900/80 backdrop-blur-md px-4 py-2 rounded-xl border-2 border-stone-800 shadow-xl flex flex-col items-center min-w-[80px]">
+             <span className="text-[8px] font-black text-stone-500 uppercase tracking-tighter">Time</span>
+             <span className="text-lg font-black text-white leading-none">{timer}s</span>
+           </div>
         </div>
-        <div className="bg-black/50 p-2 rounded border border-white/10 text-green-400 font-mono">
-          MATERIALS: {materialsCount}
+
+        {/* Currency & Level */}
+        <div className="flex gap-2">
+          <div className="bg-stone-950/80 backdrop-blur-md px-4 py-2 rounded-xl border-2 border-stone-800 shadow-xl flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+            <span className="text-sm font-black text-green-400">{materialsCount}</span>
+          </div>
+          <div className="bg-stone-950/80 backdrop-blur-md px-4 py-2 rounded-xl border-2 border-stone-800 shadow-xl flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+            <span className="text-sm font-black text-blue-400">LVL {playerRef.current.level}</span>
+          </div>
         </div>
-        <div className="bg-black/50 p-2 rounded border border-white/10 text-blue-400 font-mono">
-          LEVEL: {playerRef.current.level}
+
+        {/* Status Effects HUD */}
+        <div className="flex gap-2 flex-wrap">
+          <AnimatePresence>
+            {playerStatusEffects.map((effect, idx) => (
+              <motion.div 
+                key={`${effect.type}-${idx}`}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                className="w-8 h-8 rounded-lg bg-stone-900 border-2 border-stone-800 flex items-center justify-center relative shadow-lg overflow-hidden"
+              >
+                {effect.type === 'BURN' && <Flame className="w-4 h-4 text-orange-500" />}
+                {effect.type === 'POISON' && <Droplets className="w-4 h-4 text-green-500" />}
+                {effect.type === 'FREEZE' && <Snowflake className="w-4 h-4 text-blue-300" />}
+                {effect.type === 'SLOW' && <Wind className="w-4 h-4 text-slate-400" />}
+                
+                {/* Duration Overlay */}
+                <div 
+                  className="absolute bottom-0 left-0 w-full bg-white/10" 
+                  style={{ height: `${(1 - effect.timer / effect.duration) * 100}%` }}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       </div>
 
       {/* Weapons HUD */}
-      <div className="absolute top-4 right-16 flex gap-2 pointer-events-none">
-        {playerWeapons.map((w, i) => (
-          <div key={i} className="w-10 h-10 bg-black/50 rounded-lg border border-white/10 flex items-center justify-center text-[8px] text-stone-400 font-bold uppercase text-center p-1">
-            {w.name.split(' ')[0]}
+      <div className="absolute top-44 right-4 flex flex-col gap-2 pointer-events-none">
+        <div className="bg-stone-900/80 backdrop-blur-md p-2 rounded-2xl border-2 border-stone-800 shadow-xl">
+          <div className="grid grid-cols-2 gap-2">
+            {playerWeapons.map((w, i) => (
+              <div key={i} className={`w-12 h-12 rounded-xl border-2 border-stone-800 flex items-center justify-center relative overflow-hidden bg-stone-950/50`}>
+                <div className={`absolute inset-0 opacity-10 ${
+                  w.rarity === 1 ? 'bg-stone-500' :
+                  w.rarity === 2 ? 'bg-green-500' :
+                  w.rarity === 3 ? 'bg-blue-500' : 'bg-purple-500'
+                }`} />
+                <span className="text-[8px] font-black text-stone-400 uppercase text-center leading-none p-1 z-10">
+                  {w.name.split(' ')[0]}
+                </span>
+                
+                {/* Rarity Indicator */}
+                <div className={`absolute bottom-0 right-0 w-2 h-2 ${
+                  w.rarity === 1 ? 'bg-stone-500' :
+                  w.rarity === 2 ? 'bg-green-500' :
+                  w.rarity === 3 ? 'bg-blue-500' : 'bg-purple-500'
+                }`} />
+              </div>
+            ))}
+            {[...Array(6 - playerWeapons.length)].map((_, i) => (
+              <div key={`empty-${i}`} className="w-12 h-12 rounded-xl border-2 border-dashed border-stone-800 bg-stone-950/20 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 rounded-full bg-stone-800" />
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
+
+      {/* Low Health Warning Vignette */}
+      {playerHp / playerStats.maxHp < 0.3 && (
+        <motion.div 
+          animate={{ opacity: [0.1, 0.4, 0.1] }}
+          transition={{ duration: 1, repeat: Infinity }}
+          className="absolute inset-0 pointer-events-none border-[40px] border-red-500/20 blur-2xl"
+        />
+      )}
 
       {/* XP Bar */}
       <div className="absolute top-0 left-0 w-full h-2 bg-slate-700">

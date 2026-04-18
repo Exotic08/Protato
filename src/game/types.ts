@@ -119,6 +119,7 @@ export interface Player extends Entity {
   materials: number;
   weapons: Weapon[];
   items: Item[];
+  statusEffects?: StatusEffect[];
 }
 
 export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN' | 'SWARMER' | 'SHIELDER' | 'DIVIDER' | 'TELEPORTER' | 'DASHER' | 'SUMMONER';

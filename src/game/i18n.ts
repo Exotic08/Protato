@@ -49,6 +49,9 @@ export const translations = {
     dmg: 'DMG',
     speed: 'SPD',
     armor: 'Armor',
+    dodge: 'Dodge',
+    critChance: 'Crit Chance',
+    hpRegen: 'HP Regen',
     luck: 'Luck',
     harvest: 'Harvest',
     
@@ -125,6 +128,9 @@ export const translations = {
     dmg: 'Sát thương',
     speed: 'Tốc độ',
     armor: 'Giáp',
+    dodge: 'Né tránh',
+    critChance: 'Chí mạng',
+    hpRegen: 'Hồi máu',
     luck: 'May mắn',
     harvest: 'Thu hoạch',
     
