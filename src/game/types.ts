@@ -1,4 +1,11 @@
-export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT' | 'MULTIPLAYER_MENU' | 'JOIN_ROOM' | 'ROOM_LOBBY' | 'OPEN_CRATE';
+export type GameState = 'MENU' | 'CHARACTER_SELECT' | 'WEAPON_SELECT' | 'PLAYING' | 'SHOP' | 'LEVEL_UP' | 'GAME_OVER' | 'VICTORY' | 'MODE_SELECT' | 'MULTIPLAYER_MENU' | 'JOIN_ROOM' | 'ROOM_LOBBY' | 'OPEN_CRATE' | 'SOUL_SHOP';
+
+export interface MetaStats {
+  soulFragments: number;
+  upgrades: {
+    [key: string]: number; // Level of each upgrade
+  };
+}
 export type GameMode = 'STANDARD' | 'ENDLESS' | 'MISSION';
 
 export interface RoomData {
@@ -58,7 +65,7 @@ export type PassiveTrigger = 'ON_KILL' | 'ON_CRIT' | 'LOW_HP' | 'ON_HIT';
 
 export interface PassiveAbility {
   trigger: PassiveTrigger;
-  type: 'STAT_BOOST' | 'HEAL' | 'FREEZE' | 'EXPLODE' | 'DAMAGE_STACK' | 'POISON';
+  type: 'STAT_BOOST' | 'HEAL' | 'FREEZE' | 'EXPLODE' | 'DAMAGE_STACK' | 'POISON' | 'SLOW' | 'BURN';
   value: number;
   chance?: number;
   duration?: number;
@@ -81,6 +88,10 @@ export interface Weapon {
   baseId: string; // To group same weapons for upgrades
   description?: string;
   passive?: PassiveAbility;
+  pierce?: number;
+  bounces?: number;
+  aoeRadius?: number;
+  cleave?: number;
 }
 
 export interface Item {
@@ -110,10 +121,10 @@ export interface Player extends Entity {
   items: Item[];
 }
 
-export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN' | 'SWARMER' | 'SHIELDER' | 'DIVIDER' | 'TELEPORTER';
+export type EnemyType = 'BASIC' | 'FAST' | 'TANK' | 'RANGED' | 'EXPLOSIVE' | 'BOSS_1' | 'BOSS_2' | 'LOOT_GOBLIN' | 'SWARMER' | 'SHIELDER' | 'DIVIDER' | 'TELEPORTER' | 'DASHER' | 'SUMMONER';
 
 export interface StatusEffect {
-  type: 'POISON' | 'FREEZE' | 'BURN';
+  type: 'POISON' | 'FREEZE' | 'BURN' | 'SLOW';
   value: number;
   duration: number;
   timer: number;
@@ -129,6 +140,8 @@ export interface Enemy extends Entity {
   cooldown?: number;
   state?: any;
   statusEffects?: StatusEffect[];
+  armor?: number;
+  armorReduction?: number;
 }
 
 export interface Projectile {
@@ -142,9 +155,17 @@ export interface Projectile {
   life: number;
   isEnemy?: boolean;
   passive?: PassiveAbility;
+  isCrit?: boolean;
+  pierceLeft?: number;
+  bouncesLeft?: number;
+  aoeRadius?: number;
+  hitEnemies?: string[];
+  weaponBaseSpeed?: number;
+  weaponBaseId?: string;
 }
 
 export interface Material {
+  id: string;
   x: number;
   y: number;
   value: number;

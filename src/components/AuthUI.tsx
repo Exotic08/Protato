@@ -6,11 +6,15 @@ import { User, Lock, Mail, AlertCircle, CheckCircle2, UserCircle } from 'lucide-
 import { io, Socket } from 'socket.io-client';
 import { MULTIPLAYER_SERVER } from '../game/constants';
 
+import { Language, translations } from '../game/i18n';
+
 interface AuthUIProps {
   onUsernameLogin?: (data: any) => void;
+  language?: Language;
 }
 
-export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
+export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin, language = 'en' }) => {
+  const t = translations[language];
   const [authMode, setAuthMode] = useState<'EMAIL' | 'USERNAME'>('EMAIL');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -105,7 +109,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
       >
         <div className="text-center mb-6">
           <h2 className="text-4xl font-black text-amber-500 drop-shadow-[0_4px_0_rgb(180,83,9)] mb-1">
-            {authMode === 'EMAIL' ? 'LOGIN' : 'GUEST LOGIN'}
+            {authMode === 'EMAIL' ? t.login : t.guestLogin}
           </h2>
           <p className="text-stone-400 font-bold uppercase text-sm">
             {authMode === 'EMAIL' ? 'Enter the battleground' : 'Join with a username'}
@@ -123,7 +127,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
             onClick={() => setAuthMode('USERNAME')}
             className={`flex-1 py-2 rounded-lg font-black text-xs uppercase transition-all ${authMode === 'USERNAME' ? 'bg-stone-800 text-amber-500 shadow-lg' : 'text-stone-500 hover:text-stone-300'}`}
           >
-            Username
+            {t.username}
           </button>
         </div>
 
@@ -144,7 +148,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
         {authMode === 'EMAIL' ? (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">Email</label>
+              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">{t.email}</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500 w-5 h-5" />
                 <input 
@@ -159,7 +163,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
             </div>
 
             <div>
-              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">Password</label>
+              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">{t.password}</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500 w-5 h-5" />
                 <input 
@@ -179,7 +183,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
                 disabled={loading}
                 className="w-full py-4 bg-amber-500 text-stone-950 font-black text-xl rounded-2xl border-4 border-b-8 border-amber-700 hover:bg-amber-400 active:border-b-4 active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'PROCESSING...' : 'LOGIN'}
+                {loading ? t.processing : t.login}
               </button>
               
               <div className="grid grid-cols-2 gap-3">
@@ -189,7 +193,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
                   disabled={loading}
                   className="py-3 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all disabled:opacity-50"
                 >
-                  REGISTER
+                  {t.register}
                 </button>
                 <button 
                   type="button"
@@ -197,7 +201,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
                   disabled={loading}
                   className="py-3 bg-stone-800 text-stone-100 font-black rounded-xl border-2 border-b-4 border-stone-950 hover:bg-stone-700 active:border-b-2 active:translate-y-1 transition-all disabled:opacity-50 text-sm"
                 >
-                  FORGOT PWD?
+                  {t.forgotPassword}
                 </button>
               </div>
             </div>
@@ -205,7 +209,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
         ) : (
           <form onSubmit={handleUsernameLogin} className="space-y-4">
             <div>
-              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">Username</label>
+              <label className="block text-stone-400 font-black mb-2 uppercase text-sm">{t.username}</label>
               <div className="relative">
                 <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500 w-5 h-5" />
                 <input 
@@ -225,7 +229,7 @@ export const AuthUI: React.FC<AuthUIProps> = ({ onUsernameLogin }) => {
                 disabled={loading}
                 className="w-full py-4 bg-amber-500 text-stone-950 font-black text-xl rounded-2xl border-4 border-b-8 border-amber-700 hover:bg-amber-400 active:border-b-4 active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'LOGGING IN...' : 'START PLAYING'}
+                {loading ? t.loggingIn : t.startPlaying}
               </button>
               <p className="text-stone-500 text-[10px] font-bold text-center mt-4 uppercase">
                 * Data will be saved to Firestore based on this username

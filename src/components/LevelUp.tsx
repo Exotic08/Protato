@@ -37,18 +37,18 @@ export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat }) => {
         </h2>
         <p className="text-stone-400 mb-6 text-xl font-bold uppercase">Choose a stat to upgrade</p>
 
-        <div className="flex flex-row gap-4 justify-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 justify-center">
           {options.map((opt, i) => (
             <motion.button
               key={i}
               whileHover={{ y: -8 }}
               onClick={() => onSelectStat(opt.stat, opt.value)}
-              className="bg-stone-800 border-4 border-b-8 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-6 rounded-3xl flex flex-col items-center gap-4 transition-all text-center active:border-b-4 active:translate-y-1 flex-1 max-w-[240px]"
+              className="bg-stone-800 border-4 border-b-8 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-4 md:p-6 rounded-3xl flex flex-row sm:flex-col items-center gap-4 transition-all text-left sm:text-center active:border-b-4 active:translate-y-1 w-full"
             >
-              <div className={`p-4 rounded-2xl bg-stone-950 border-2 border-stone-800 shadow-inner ${opt.color}`}>
-                <opt.icon className="w-12 h-12" />
+              <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl bg-stone-950 border-2 border-stone-800 shadow-inner flex-shrink-0 ${opt.color}`}>
+                <opt.icon className="w-8 h-8 md:w-12 md:h-12" />
               </div>
-              <span className="text-xl font-black text-stone-100 uppercase leading-tight">{opt.name}</span>
+              <span className="text-lg md:text-xl font-black text-stone-100 uppercase leading-tight">{opt.name}</span>
             </motion.button>
           ))}
         </div>

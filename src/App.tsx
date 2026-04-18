@@ -9,19 +9,26 @@ import { AuthUI } from './components/AuthUI';
 import { DisplayNameModal } from './components/DisplayNameModal';
 import { MultiplayerMenu } from './components/MultiplayerMenu';
 import { RoomLobby } from './components/RoomLobby';
-import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData } from './game/types';
+import { SoulShop } from './components/SoulShop';
+import { META_UPGRADES } from './game/metaConstants';
+import { ACHIEVEMENTS } from './game/achievements';
+import { Language, translations } from './game/i18n';
+import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData, MetaStats } from './game/types';
 import { INITIAL_STATS, WEAPONS, XP_PER_LEVEL, MULTIPLAYER_SERVER } from './game/constants';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize, Users } from 'lucide-react';
+import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize, Users, Sparkles } from 'lucide-react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { ref, onValue, set, update, remove, onDisconnect } from 'firebase/database';
+import { playClickSound, toggleMute, initAudio, playLevelUpSound, startBGM, stopBGM, setMusicVolume, setSfxVolume } from './game/audio';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [guestUser, setGuestUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem('potato_language') as Language) || 'en');
+  const t = translations[language];
   
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [forceNameSetup, setForceNameSetup] = useState(false);
@@ -33,6 +40,9 @@ export default function App() {
 
   const [tempScale, setTempScale] = useState(100);
   const [isPortrait, setIsPortrait] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [musicVol, setMusicVol] = useState(50);
+  const [sfxVol, setSfxVol] = useState(100);
 
   const [gameState, setGameState] = useState<GameState>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('STANDARD');
@@ -44,10 +54,27 @@ export default function App() {
 
   // Global Stats for Unlocks
   const [globalStats, setGlobalStats] = useState({ totalKills: 0, maxWave: 0, totalMaterials: 0 });
+  const [metaStats, setMetaStats] = useState<MetaStats>({ soulFragments: 0, upgrades: {} });
+  const [achievements, setAchievements] = useState<string[]>([]);
+  const [toast, setToast] = useState<{title: string, desc: string} | null>(null);
 
   useEffect(() => {
+    // Check for saved guest login
+    const savedGuest = localStorage.getItem('potato_guest_session');
+    if (savedGuest) {
+      const data = JSON.parse(savedGuest);
+      setGuestUser(data);
+      setDisplayName(data.username);
+      if (data.stats) setGlobalStats(data.stats);
+      setAuthLoading(false);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setGuestUser(null);
+        localStorage.removeItem('potato_guest_session');
+      }
       setAuthLoading(false);
       
       if (currentUser) {
@@ -57,6 +84,24 @@ export default function App() {
           const data = snapshot.val();
           if (data) {
             setGlobalStats(data);
+          }
+        }, { onlyOnce: true });
+
+        // Load meta stats
+        const metaRef = ref(db, `users/${currentUser.uid}/meta`);
+        onValue(metaRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            setMetaStats(data);
+          }
+        }, { onlyOnce: true });
+
+        // Load achievements
+        const achRef = ref(db, `users/${currentUser.uid}/achievements`);
+        onValue(achRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            setAchievements(data);
           }
         }, { onlyOnce: true });
 
@@ -85,6 +130,24 @@ export default function App() {
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
+
+  useEffect(() => {
+    if (gameState === 'MENU') {
+      startBGM('menu');
+    } else if (gameState === 'PLAYING') {
+      startBGM('gameplay');
+    } else if (gameState === 'GAME_OVER') {
+      startBGM('gameover');
+    }
+  }, [gameState]);
+
+  useEffect(() => {
+    setMusicVolume(musicVol / 100);
+  }, [musicVol]);
+
+  useEffect(() => {
+    setSfxVolume(sfxVol / 100);
+  }, [sfxVol]);
 
   useEffect(() => {
     const checkScale = () => {
@@ -125,8 +188,27 @@ export default function App() {
     }
   };
 
+  const handleMetaUpgrade = (upgradeId: string, cost: number) => {
+    setMetaStats(prev => {
+      const next = {
+        ...prev,
+        soulFragments: prev.soulFragments - cost,
+        upgrades: {
+          ...prev.upgrades,
+          [upgradeId]: (prev.upgrades[upgradeId] || 0) + 1
+        }
+      };
+      
+      if (user) {
+        set(ref(db, `users/${user.uid}/meta`), next);
+      }
+      return next;
+    });
+    playLevelUpSound();
+  };
   const saveGlobalStats = (newStats: any) => {
     setGlobalStats(newStats);
+    checkAchievements(newStats);
     if (user) {
       set(ref(db, `users/${user.uid}/stats`), newStats);
     } else if (guestUser) {
@@ -159,7 +241,42 @@ export default function App() {
     { id: 'm2', title: 'Hoarder', description: 'Collect 100 materials', target: 100, current: 0, type: 'MATERIALS', reward: 100 },
   ]);
 
+  const checkAchievements = (stats: any) => {
+    const newUnlocked: string[] = [];
+    if (stats.totalKills >= 1 && !achievements.includes('first_blood')) newUnlocked.push('first_blood');
+    if (stats.maxWave >= 10 && !achievements.includes('survivor_10')) newUnlocked.push('survivor_10');
+    if (stats.maxWave >= 20 && !achievements.includes('survivor_20')) newUnlocked.push('survivor_20');
+    if (stats.totalMaterials >= 1000 && !achievements.includes('hoarder')) newUnlocked.push('hoarder');
+    if (stats.totalKills >= 5000 && !achievements.includes('godlike')) newUnlocked.push('godlike');
+
+    if (newUnlocked.length > 0) {
+      const next = [...achievements, ...newUnlocked];
+      setAchievements(next);
+      if (user) set(ref(db, `users/${user.uid}/achievements`), next);
+      
+      const ach = ACHIEVEMENTS.find(a => a.id === newUnlocked[0]);
+      if (ach) {
+        setToast({ title: ach.title, desc: ach.description });
+        setTimeout(() => setToast(null), 4000);
+      }
+    }
+  };
+
   const startGame = (mode: GameMode = 'STANDARD') => {
+    initAudio();
+    playClickSound();
+    
+    // Apply meta upgrades to base stats
+    let upgradedStats = { ...INITIAL_STATS };
+    META_UPGRADES.forEach(upgrade => {
+      const level = metaStats.upgrades[upgrade.id] || 0;
+      if (level > 0) {
+        const bonus = level * upgrade.valuePerLevel;
+        (upgradedStats as any)[upgrade.stat] += bonus;
+      }
+    });
+
+    setStats(upgradedStats);
     setGameMode(mode);
     setGameState('CHARACTER_SELECT');
   };
@@ -172,18 +289,19 @@ export default function App() {
   };
 
   const handleCreateRoom = async () => {
-    if (!user || !displayName) return;
+    const uid = user?.uid || guestUser?.username;
+    if (!uid || !displayName) return;
     const newRoomId = generateRoomCode();
     const roomRef = ref(db, `rooms/${newRoomId}`);
     
     const newRoom: RoomData = {
       id: newRoomId,
-      host: user.uid,
+      host: uid,
       mode: 'STANDARD',
       state: 'LOBBY',
       wave: 1,
       players: {
-        [user.uid]: {
+        [uid]: {
           displayName: displayName,
           isReady: false
         }
@@ -193,32 +311,34 @@ export default function App() {
     await set(roomRef, newRoom);
     
     // Set up disconnect hook to remove player from room
-    const playerRef = ref(db, `rooms/${newRoomId}/players/${user.uid}`);
-    onDisconnect(playerRef).remove();
+    const pRef = ref(db, `rooms/${newRoomId}/players/${uid}`);
+    onDisconnect(pRef).remove();
     
     setRoomId(newRoomId);
     setGameState('ROOM_LOBBY');
   };
 
   const handleJoinRoom = async (code: string) => {
-    if (!user || !displayName) return;
+    const uid = user?.uid || guestUser?.username;
+    if (!uid || !displayName) return;
     setRoomId(code);
     
-    const playerRef = ref(db, `rooms/${code}/players/${user.uid}`);
-    await set(playerRef, {
+    const pRef = ref(db, `rooms/${code}/players/${uid}`);
+    await set(pRef, {
       displayName: displayName,
       isReady: false
     });
     
-    onDisconnect(playerRef).remove();
+    onDisconnect(pRef).remove();
     setGameState('ROOM_LOBBY');
   };
 
   const handleLeaveRoom = async () => {
-    if (!user || !roomId) return;
-    const playerRef = ref(db, `rooms/${roomId}/players/${user.uid}`);
-    await remove(playerRef);
-    onDisconnect(playerRef).cancel();
+    const uid = user?.uid || guestUser?.username;
+    if (!uid || !roomId) return;
+    const pRef = ref(db, `rooms/${roomId}/players/${uid}`);
+    await remove(pRef);
+    onDisconnect(pRef).cancel();
     setRoomId(null);
     setRoomData(null);
     setGameState('MENU');
@@ -273,6 +393,16 @@ export default function App() {
     return () => unsubscribe();
   }, [roomId, user, gameState]);
 
+  const handleGameOver = () => {
+    // Award fragments based on wave
+    const reward = Math.floor(wave * 5);
+    setMetaStats(prev => {
+      const next = { ...prev, soulFragments: prev.soulFragments + reward };
+      if (user) set(ref(db, `users/${user.uid}/meta`), next);
+      return next;
+    });
+    setGameState('GAME_OVER');
+  };
   const handleCharacterSelect = (char: Character) => {
     setSelectedCharacter(char);
     setGameState('WEAPON_SELECT');
@@ -342,15 +472,20 @@ export default function App() {
     setCratesToOpen(crates);
     
     // Update global stats
-    saveGlobalStats({
+    const nextGlobalStats = {
       totalKills: globalStats.totalKills + killsThisWave,
       maxWave: Math.max(globalStats.maxWave, wave),
       totalMaterials: globalStats.totalMaterials + (currentMaterials - materials)
-    });
+    };
+    saveGlobalStats(nextGlobalStats);
     
-    // Update missions (simulated for now, would need actual kill count from GameCanvas)
-    // For now let's just assume some progress
+    // Update missions and check for completion
     setMissions(prev => prev.map(m => {
+      if (m.type === 'KILLS' && killsThisWave > 0) {
+        const next = Math.min(m.target, m.current + killsThisWave);
+        if (next === m.target && m.current < m.target) setMaterials(curr => curr + m.reward);
+        return { ...m, current: next };
+      }
       if (m.type === 'MATERIALS') {
         const next = Math.min(m.target, currentMaterials);
         if (next === m.target && m.current < m.target) setMaterials(curr => curr + m.reward);
@@ -359,9 +494,22 @@ export default function App() {
       return m;
     }));
 
+    if (gameMode === 'STANDARD' && wave >= 20) {
+      // Award big bonus for victory
+      const reward = 200;
+      setMetaStats(prev => {
+        const next = { ...prev, soulFragments: prev.soulFragments + reward };
+        if (user) set(ref(db, `users/${user.uid}/meta`), next);
+        return next;
+      });
+      setGameState('VICTORY');
+      return;
+    }
+
     if (crates > 0) {
       setGameState('OPEN_CRATE');
     } else if (currentXp >= XP_PER_LEVEL(level)) {
+      playLevelUpSound();
       setGameState('LEVEL_UP');
     } else {
       setGameState('SHOP');
@@ -369,7 +517,7 @@ export default function App() {
         update(ref(db, `rooms/${roomId}`), { state: 'SHOP' });
       }
     }
-  }, [level, globalStats, materials, wave, roomId, user, roomData]);
+  }, [level, globalStats, materials, wave, roomId, user, roomData, gameMode]);
 
   const handleLevelUp = (stat: keyof Stats, value: number) => {
     setStats(prev => ({ ...prev, [stat]: prev[stat] + value }));
@@ -379,6 +527,7 @@ export default function App() {
       setXp(prevXp => {
         const remainingXp = prevXp - XP_PER_LEVEL(prevLevel);
         if (remainingXp >= XP_PER_LEVEL(nextLevel)) {
+          playLevelUpSound();
           setGameState('LEVEL_UP');
         } else {
           setGameState('SHOP');
@@ -437,6 +586,7 @@ export default function App() {
       const next = prev - 1;
       if (next <= 0) {
         if (xp >= XP_PER_LEVEL(level)) {
+          playLevelUpSound();
           setGameState('LEVEL_UP');
         } else {
           setGameState('SHOP');
@@ -454,7 +604,13 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    if (user) {
+      await signOut(auth);
+    } else {
+      setGuestUser(null);
+      setDisplayName(null);
+      localStorage.removeItem('potato_guest_session');
+    }
     setShowSettings(false);
   };
 
@@ -486,7 +642,7 @@ export default function App() {
             {isFullscreen ? <Minimize className="w-8 h-8" /> : <Maximize className="w-8 h-8" />}
           </button>
 
-          {user && !forceNameSetup && (gameState === 'MENU' || gameState === 'PLAYING' || gameState === 'SHOP') && (
+          { (user || guestUser) && !forceNameSetup && (gameState === 'MENU' || gameState === 'PLAYING' || gameState === 'SHOP') && (
             <div className="relative">
               <button 
                 onClick={() => setShowSettings(!showSettings)}
@@ -508,14 +664,34 @@ export default function App() {
                         <UserIcon className="w-6 h-6" />
                       </div>
                       <div className="overflow-hidden">
-                        <p className="text-[10px] text-stone-500 font-black uppercase tracking-tighter">{user?.email || 'GUEST ACCOUNT'}</p>
+                        <p className="text-[10px] text-stone-500 font-black uppercase tracking-tighter">{user?.email || guestUser?.username || 'GUEST ACCOUNT'}</p>
                         <p className="text-base font-black text-stone-300 truncate">{displayName || 'No Name'}</p>
                       </div>
                     </div>
 
                     <div className="mb-4 bg-stone-950 p-4 rounded-2xl border-2 border-stone-800">
                       <label className="text-xs font-black text-stone-500 uppercase mb-2 flex justify-between">
-                        <span>UI Scale</span>
+                        <span>{t.language}</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => { setLanguage('en'); localStorage.setItem('potato_language', 'en'); }}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black ${language === 'en' ? 'bg-amber-500 text-stone-950' : 'bg-stone-800 text-stone-400'}`}
+                          >
+                            EN
+                          </button>
+                          <button 
+                            onClick={() => { setLanguage('vi'); localStorage.setItem('potato_language', 'vi'); }}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black ${language === 'vi' ? 'bg-amber-500 text-stone-950' : 'bg-stone-800 text-stone-400'}`}
+                          >
+                            VI
+                          </button>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="mb-4 bg-stone-950 p-4 rounded-2xl border-2 border-stone-800">
+                      <label className="text-xs font-black text-stone-500 uppercase mb-2 flex justify-between">
+                        <span>{t.uiScale}</span>
                         <span className="text-amber-500">{tempScale}%</span>
                       </label>
                       <input 
@@ -542,9 +718,57 @@ export default function App() {
                         }}
                         className="text-[10px] text-stone-500 hover:text-stone-300 uppercase font-black w-full text-center mt-1"
                       >
-                        Reset to Auto
+                        {t.resetToAuto}
                       </button>
                     </div>
+
+                    <div className="mb-4 bg-stone-950 p-4 rounded-2xl border-2 border-stone-800 flex justify-between items-center">
+                      <span className="text-xs font-black text-stone-500 uppercase">Sound</span>
+                      <button 
+                        onClick={() => {
+                          const newMute = !isAudioMuted;
+                          setIsAudioMuted(newMute);
+                          toggleMute(newMute);
+                          if (!newMute) playClickSound();
+                        }}
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase border-2 transition-all ${isAudioMuted ? 'bg-stone-800 text-stone-400 border-stone-700' : 'bg-green-500/20 text-green-400 border-green-500/50'}`}
+                      >
+                        {isAudioMuted ? 'Muted' : 'On'}
+                      </button>
+                    </div>
+
+                    {!isAudioMuted && (
+                      <div className="space-y-4 mb-4">
+                        <div className="bg-stone-950 p-4 rounded-2xl border-2 border-stone-800">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black text-stone-500 uppercase">{t.musicVolume}</span>
+                            <span className="text-[10px] font-black text-amber-500">{musicVol}%</span>
+                          </div>
+                          <input 
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={musicVol}
+                            onChange={(e) => setMusicVol(Number(e.target.value))}
+                            className="w-full accent-amber-500"
+                          />
+                        </div>
+                        <div className="bg-stone-950 p-4 rounded-2xl border-2 border-stone-800">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black text-stone-500 uppercase">{t.sfxVolume}</span>
+                            <span className="text-[10px] font-black text-amber-500">{sfxVol}%</span>
+                          </div>
+                          <input 
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={sfxVol}
+                            onChange={(e) => setSfxVol(Number(e.target.value))}
+                            className="w-full accent-amber-500"
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {gameState === 'PLAYING' || gameState === 'SHOP' ? (
                       <button 
@@ -558,14 +782,14 @@ export default function App() {
                         }}
                         className="w-full py-4 mb-2 bg-red-500/10 text-red-500 font-black rounded-2xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2 uppercase"
                       >
-                        QUIT RUN
+                        {t.quitRun}
                       </button>
                     ) : (
                       <button 
                         onClick={() => { setShowSettings(false); setShowChangeName(true); }}
                         className="w-full py-4 mb-2 bg-stone-800 text-stone-100 font-black rounded-2xl border-2 border-stone-950 hover:bg-stone-700 transition-all flex items-center justify-center gap-2 uppercase"
                       >
-                        CHANGE NAME
+                        {t.changeName}
                       </button>
                     )}
                     
@@ -582,7 +806,7 @@ export default function App() {
                         }}
                         className="w-full py-4 bg-red-500/10 text-red-500 font-black rounded-2xl border-2 border-red-500/20 hover:bg-red-500 hover:text-stone-950 transition-all flex items-center justify-center gap-2 uppercase"
                       >
-                        <LogOut className="w-4 h-4" /> SIGN OUT
+                        <LogOut className="w-4 h-4" /> {t.signOut}
                       </button>
                     )}
                   </motion.div>
@@ -593,12 +817,16 @@ export default function App() {
         </div>
 
         {!user && !guestUser && (
-          <AuthUI onUsernameLogin={(data) => {
-            setGuestUser(data);
-            setDisplayName(data.username);
-            if (data.stats) setGlobalStats(data.stats);
-            setAuthLoading(false);
-          }} />
+          <AuthUI 
+            language={language}
+            onUsernameLogin={(data) => {
+              setGuestUser(data);
+              setDisplayName(data.username);
+              localStorage.setItem('potato_guest_session', JSON.stringify(data));
+              if (data.stats) setGlobalStats(data.stats);
+              setAuthLoading(false);
+            }} 
+          />
         )}
 
       {(user || guestUser) && forceNameSetup && (
@@ -637,7 +865,7 @@ export default function App() {
               </div>
               &nbsp;SURVIVOR
             </h1>
-            <p className="text-stone-400 text-2xl font-bold mb-12 uppercase tracking-widest">Survive the swarm. Build your arsenal.</p>
+            <p className="text-stone-400 text-2xl font-bold mb-12 uppercase tracking-widest">{t.surviveSwarm}</p>
             
             <div className="flex flex-col gap-6 max-w-md mx-auto">
               <button 
@@ -645,31 +873,39 @@ export default function App() {
                 className="group relative px-8 py-5 bg-amber-500 text-stone-950 font-black text-2xl rounded-2xl border-4 border-b-8 border-amber-700 hover:bg-amber-400 hover:border-amber-600 active:border-b-4 active:translate-y-1 transition-all"
               >
                 <span className="flex items-center justify-center gap-3">
-                  <Play className="fill-current w-6 h-6" /> STANDARD RUN
+                  <Play className="fill-current w-6 h-6" /> {t.standardRun}
                 </span>
               </button>
               <button 
-                onClick={() => setGameState('MULTIPLAYER_MENU')}
+                onClick={() => { playClickSound(); setGameState('MULTIPLAYER_MENU'); }}
                 className="group relative px-8 py-5 bg-green-500 text-stone-950 font-black text-2xl rounded-2xl border-4 border-b-8 border-green-700 hover:bg-green-400 hover:border-green-600 active:border-b-4 active:translate-y-1 transition-all"
               >
                 <span className="flex items-center justify-center gap-3">
-                  <Users className="w-6 h-6" /> MULTIPLAYER
+                  <Users className="w-6 h-6" /> {t.multiplayer}
                 </span>
               </button>
               <button 
-                onClick={() => startGame('ENDLESS')}
+                onClick={() => { initAudio(); playClickSound(); startGame('ENDLESS'); }}
                 className="group relative px-8 py-5 bg-stone-800 text-stone-100 font-black text-2xl rounded-2xl border-4 border-b-8 border-stone-950 hover:bg-stone-700 active:border-b-4 active:translate-y-1 transition-all"
               >
                 <span className="flex items-center justify-center gap-3">
-                  <Infinity className="w-6 h-6" /> ENDLESS MODE
+                  <Infinity className="w-6 h-6" /> {t.endlessMode}
                 </span>
               </button>
               <button 
-                onClick={() => setGameState('MODE_SELECT')}
+                onClick={() => { playClickSound(); setGameState('SOUL_SHOP'); }}
+                className="group relative px-8 py-5 bg-stone-800 text-amber-400 font-black text-2xl rounded-2xl border-4 border-b-8 border-stone-950 hover:bg-stone-700 active:border-b-4 active:translate-y-1 transition-all"
+              >
+                <span className="flex items-center justify-center gap-3">
+                  <Sparkles className="w-6 h-6" /> {t.soulShop}
+                </span>
+              </button>
+              <button 
+                onClick={() => { playClickSound(); setGameState('MODE_SELECT'); }}
                 className="group relative px-8 py-5 bg-stone-800 text-stone-100 font-black text-2xl rounded-2xl border-4 border-b-8 border-stone-950 hover:bg-stone-700 active:border-b-4 active:translate-y-1 transition-all"
               >
                 <span className="flex items-center justify-center gap-3">
-                  <Target className="w-6 h-6" /> MISSIONS
+                  <Target className="w-6 h-6" /> {t.missions}
                 </span>
               </button>
             </div>
@@ -703,33 +939,46 @@ export default function App() {
             className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-2xl w-full"
           >
             <h2 className="text-5xl font-black mb-8 text-amber-500 flex items-center gap-4 drop-shadow-[0_4px_0_rgb(180,83,9)]">
-              <Target className="w-10 h-10" /> ACTIVE MISSIONS
+              <Target className="w-10 h-10" /> {t.activeMissions}
             </h2>
             <div className="space-y-4 mb-8">
-              {missions.map(m => (
-                <div key={m.id} className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700 shadow-inner">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-2xl font-black text-stone-100 uppercase">{m.title}</h3>
-                    <span className="text-green-400 font-black text-xl bg-stone-950 px-3 py-1 rounded-lg border border-stone-800">+{m.reward} MAT</span>
+              {missions.map(m => {
+                const title = m.id === 'm1' ? t.missionSlayerTitle : t.missionHoarderTitle;
+                const desc = m.id === 'm1' ? t.missionSlayerDesc : t.missionHoarderDesc;
+                return (
+                  <div key={m.id} className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700 shadow-inner">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="text-2xl font-black text-stone-100 uppercase">{title}</h3>
+                      <span className="text-green-400 font-black text-xl bg-stone-950 px-3 py-1 rounded-lg border border-stone-800">+{m.reward} MAT</span>
+                    </div>
+                    <p className="text-stone-400 text-sm font-bold mb-4 uppercase">{desc}</p>
+                    <div className="w-full bg-stone-950 h-4 rounded-full overflow-hidden border-2 border-stone-800 shadow-inner">
+                      <div 
+                        className="bg-amber-500 h-full transition-all" 
+                        style={{ width: `${(m.current / m.target) * 100}%` }}
+                      />
+                    </div>
+                    <div className="text-right text-xs font-bold text-stone-500 mt-2">{m.current} / {m.target}</div>
                   </div>
-                  <p className="text-stone-400 text-sm font-bold mb-4 uppercase">{m.description}</p>
-                  <div className="w-full bg-stone-950 h-4 rounded-full overflow-hidden border-2 border-stone-800 shadow-inner">
-                    <div 
-                      className="bg-amber-500 h-full transition-all" 
-                      style={{ width: `${(m.current / m.target) * 100}%` }}
-                    />
-                  </div>
-                  <div className="text-right text-xs font-bold text-stone-500 mt-2">{m.current} / {m.target}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button 
               onClick={() => setGameState('MENU')}
               className="w-full py-4 bg-stone-200 hover:bg-white text-stone-950 font-black text-xl rounded-2xl border-4 border-b-8 border-stone-400 active:border-b-4 active:translate-y-1 transition-all"
             >
-              BACK TO MENU
+              {t.backToMenu}
             </button>
           </motion.div>
+        )}
+
+        {gameState === 'SOUL_SHOP' && (
+          <SoulShop 
+            metaStats={metaStats} 
+            onUpgrade={handleMetaUpgrade}
+            onBack={() => setGameState('MENU')}
+            t={t}
+          />
         )}
 
         {gameState === 'CHARACTER_SELECT' && (
@@ -772,7 +1021,7 @@ export default function App() {
             <GameCanvas 
               gameState={gameState}
               onWaveEnd={handleWaveEnd}
-              onGameOver={() => setGameState('GAME_OVER')}
+              onGameOver={handleGameOver}
               playerStats={stats}
               playerWeapons={weapons}
               initialMaterials={materials}
@@ -784,6 +1033,11 @@ export default function App() {
               isHost={roomId ? roomData?.host === (user?.uid || guestUser?.username) : true}
               displayName={displayName || 'Potato'}
               isMultiplayer={!!roomId}
+              onMissionProgress={(type, amount) => {
+                if (type === 'KILLS') {
+                  // Handled at wave end for performance, or we could track here
+                }
+              }}
             />
           </motion.div>
         )}
@@ -792,6 +1046,7 @@ export default function App() {
           <Shop 
             key="shop"
             materials={materials}
+            playerStats={stats}
             onBuyWeapon={handleBuyWeapon}
             onBuyItem={handleBuyItem}
             onUpgradeWeapon={handleUpgradeWeapon}
@@ -826,15 +1081,79 @@ export default function App() {
             animate={{ scale: 1, opacity: 1 }}
             className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-red-900 shadow-2xl max-w-2xl w-full z-10"
           >
-            <Skull className="w-32 h-32 text-red-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(153,27,27)]" />
-            <h2 className="text-8xl font-black text-red-500 mb-4 drop-shadow-[0_6px_0_rgb(153,27,27)]">RUN ENDED</h2>
-            <p className="text-stone-400 text-3xl font-black mb-12 uppercase">You survived <span className="text-amber-500">{wave}</span> waves in <span className="text-amber-500">{gameMode}</span> mode.</p>
+            < Skull className="w-32 h-32 text-red-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(153,27,27)]" />
+            <h2 className="text-8xl font-black text-red-500 mb-4 drop-shadow-[0_6px_0_rgb(153,27,27)] uppercase">{t.gameOver}</h2>
+            <p className="text-stone-400 text-3xl font-black mb-8 uppercase text-center">You survived <span className="text-amber-500">{wave}</span> {t.wave} in <span className="text-amber-500">{gameMode}</span> mode.</p>
+            
+            <div className="grid grid-cols-2 gap-4 mb-10 text-left">
+              <div className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700">
+                <p className="text-stone-500 text-xs font-black uppercase mb-1">Items Collected</p>
+                <p className="text-3xl font-black text-amber-500">{items.length}</p>
+              </div>
+              <div className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700">
+                <p className="text-stone-500 text-xs font-black uppercase mb-1">Total Kills</p>
+                <p className="text-3xl font-black text-white">{globalStats.totalKills}</p>
+              </div>
+            </div>
+
             <button 
               onClick={() => setGameState('MENU')}
               className="px-10 py-5 bg-stone-200 text-stone-950 font-black text-3xl rounded-2xl border-4 border-b-8 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-1 transition-all flex items-center gap-4 mx-auto"
             >
-              <RotateCcw className="w-8 h-8" /> BACK TO MENU
+              <RotateCcw className="w-8 h-8" /> {t.backToMenu}
             </button>
+          </motion.div>
+        )}
+
+        {gameState === 'VICTORY' && (
+          <motion.div 
+            key="victory"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-amber-600 shadow-2xl max-w-2xl w-full z-10"
+          >
+            <Trophy className="w-32 h-32 text-amber-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(180,83,9)]" />
+            <h2 className="text-8xl font-black text-amber-500 mb-4 drop-shadow-[0_6px_0_rgb(180,83,9)] uppercase">{t.victory}</h2>
+            <p className="text-stone-200 text-3xl font-black mb-6 uppercase">You have survived {t.wave} 20!</p>
+            <div className="grid grid-cols-2 gap-4 mb-12">
+              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
+                <p className="text-stone-400 text-sm font-bold uppercase">Total Kills</p>
+                <p className="text-2xl font-black text-white">{globalStats.totalKills}</p>
+              </div>
+              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
+                <p className="text-stone-400 text-sm font-bold uppercase">{t.materials}</p>
+                <p className="text-2xl font-black text-amber-500">{materials}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                setGameState('MENU');
+                // Could award a win bonus or unlock something here
+              }}
+              className="px-10 py-5 bg-amber-600 text-white font-black text-3xl rounded-2xl border-4 border-b-8 border-amber-800 hover:bg-amber-500 active:border-b-4 active:translate-y-1 transition-all flex items-center gap-4 mx-auto"
+            >
+              <RotateCcw className="w-8 h-8" /> {t.backToMenu}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            className="fixed top-24 right-8 z-[100] bg-stone-900 border-4 border-amber-500 rounded-2xl p-4 shadow-2xl flex items-center gap-4 min-w-[300px]"
+          >
+            <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
+              <Trophy className="text-stone-950 w-8 h-8" />
+            </div>
+            <div>
+              <p className="text-amber-500 font-black text-xs uppercase tracking-widest leading-none mb-1">{t.achievementUnlocked}</p>
+              <h4 className="text-white font-black text-xl leading-none mb-1">{toast.title}</h4>
+              <p className="text-stone-400 text-[10px] font-bold uppercase">{toast.desc}</p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
