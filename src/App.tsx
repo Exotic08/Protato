@@ -92,7 +92,10 @@ export default function App() {
         onValue(metaRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
-            setMetaStats(data);
+            setMetaStats({
+              soulFragments: data.soulFragments || 0,
+              upgrades: data.upgrades || {}
+            });
           }
         }, { onlyOnce: true });
 
@@ -268,8 +271,10 @@ export default function App() {
     
     // Apply meta upgrades to base stats
     let upgradedStats = { ...INITIAL_STATS };
+    const currentMetaUpgrades = metaStats.upgrades || {};
+    
     META_UPGRADES.forEach(upgrade => {
-      const level = metaStats.upgrades[upgrade.id] || 0;
+      const level = currentMetaUpgrades[upgrade.id] || 0;
       if (level > 0) {
         const bonus = level * upgrade.valuePerLevel;
         (upgradedStats as any)[upgrade.stat] += bonus;
@@ -913,22 +918,26 @@ export default function App() {
         )}
 
         {gameState === 'MULTIPLAYER_MENU' && (
-          <MultiplayerMenu 
-            onCreateRoom={handleCreateRoom}
-            onJoinRoom={handleJoinRoom}
-            onBack={() => setGameState('MENU')}
-          />
+          <motion.div key="multi_menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full flex justify-center">
+            <MultiplayerMenu 
+              onCreateRoom={handleCreateRoom}
+              onJoinRoom={handleJoinRoom}
+              onBack={() => setGameState('MENU')}
+            />
+          </motion.div>
         )}
 
         {gameState === 'ROOM_LOBBY' && roomData && user && (
-          <RoomLobby 
-            room={roomData}
-            currentUserUid={user.uid}
-            onStart={handleStartMultiplayer}
-            onLeave={handleLeaveRoom}
-            onKick={handleKickPlayer}
-            onChangeMode={() => {}} // TODO
-          />
+          <motion.div key="room_lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full flex justify-center">
+            <RoomLobby 
+              room={roomData}
+              currentUserUid={user.uid}
+              onStart={handleStartMultiplayer}
+              onLeave={handleLeaveRoom}
+              onKick={handleKickPlayer}
+              onChangeMode={() => {}} // TODO
+            />
+          </motion.div>
         )}
 
         {gameState === 'MODE_SELECT' && (

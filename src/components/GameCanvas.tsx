@@ -95,6 +95,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const lastSyncTimeRef = useRef<number>(0);
   const lastIsMovingRef = useRef<boolean>(false);
   const lastHpRef = useRef<number>(playerStats.maxHp);
+  const lastDeadRef = useRef<boolean>(false);
   const reviveProgressRef = useRef<{ [id: string]: number }>({});
   const [isTouch, setIsTouch] = useState(false);
   const [ping, setPing] = useState<number>(0);
@@ -445,19 +446,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const isMoving = !player.isDead && (dx !== 0 || dy !== 0);
       const hpChanged = Math.abs(player.hp - lastHpRef.current) > 0.5;
       
-      if (socketRef.current && (isMoving || lastIsMovingRef.current || hpChanged || player.isDead !== (lastHpRef.current <= 0)) && now - lastEmitTimeRef.current > 33) {
+      if (socketRef.current && (isMoving || lastIsMovingRef.current || hpChanged || player.isDead !== (lastDeadRef.current || false)) && now - lastEmitTimeRef.current > 33) {
         socketRef.current.emit('playerMovement', { 
           x: Math.round(player.x), 
           y: Math.round(player.y), 
-          hp: Math.round(player.hp),
-          maxHp: Math.round(player.maxHp),
-          isDead: player.isDead,
+          hp: Math.round(player.hp || 0),
+          maxHp: Math.round(player.maxHp || 100),
+          isDead: player.isDead || false,
           roomId, 
           name: displayName 
         });
         lastEmitTimeRef.current = now;
         lastIsMovingRef.current = isMoving;
         lastHpRef.current = player.hp;
+        lastDeadRef.current = player.isDead;
       }
 
       // 2. Wave Timer
@@ -822,7 +824,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             if (actualDamage > 0 && Math.random() < 0.2 && player.items.some(i => i.id === 'fire_flask')) {
               floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: 'FIRE FLASK!', color: '#ef4444', life: 30 });
               enemiesRef.current.forEach(e => {
-                if (Math.sqrt((e.x - player.x)**2 + (e.y - player.y)**2) < 120) {
+                if (e && Math.sqrt((e.x - player.x)**2 + (e.y - player.y)**2) < 120) {
                   e.hp -= 20; // fixed 20 true damage
                 }
               });
@@ -984,10 +986,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     nearestEnemy.armorReduction += 5;
                   }
 
-                  // Life Steal
-                  if (stats.lifeSteal > 0) {
-                    player.hp = Math.min(player.maxHp, player.hp + damage * (stats.lifeSteal / 100));
-                  }
+          // Life Steal
+          if (stats.lifeSteal > 0 && damage > 0) {
+            player.hp = Math.min(player.maxHp, (player.hp || 0) + damage * (stats.lifeSteal / 100));
+          }
                   
                   // Handle ON_HIT passives
                   if (weapon.passive?.trigger === 'ON_HIT') {
@@ -1058,7 +1060,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             if (Math.random() < 0.2 && player.items.some(i => i.id === 'fire_flask')) {
               floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: 'FIRE FLASK!', color: '#ef4444', life: 30 });
               enemiesRef.current.forEach(e => {
-                if (Math.sqrt((e.x - player.x)**2 + (e.y - player.y)**2) < 120) {
+                if (e && Math.sqrt((e.x - player.x)**2 + (e.y - player.y)**2) < 120) {
                   e.hp -= 20;
                 }
               });
@@ -1112,8 +1114,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 }
                 
                 // Life Steal
-                if (stats.lifeSteal > 0) {
-                  player.hp = Math.min(player.maxHp, player.hp + p.damage * (stats.lifeSteal / 100));
+                if (stats.lifeSteal > 0 && p.damage > 0) {
+                  player.hp = Math.min(player.maxHp, (player.hp || 0) + p.damage * (stats.lifeSteal / 100));
                 }
 
                 // Handle ranged passives
@@ -1610,10 +1612,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fill();
 
           // Health Fill
-          const hpRatio = enemy.hp / enemy.maxHp;
+          const hpRatio = (enemy.maxHp && enemy.maxHp > 0) ? (enemy.hp / enemy.maxHp) : 0;
           ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.2 ? '#eab308' : '#ef4444');
           ctx.beginPath();
-          ctx.roundRect(bx, by, barWidth * hpRatio, barHeight, 2);
+          ctx.roundRect(bx, by, barWidth * Math.max(0, Math.min(1, hpRatio)), barHeight, 2);
           ctx.fill();
         }
       });
@@ -1765,7 +1767,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.fillStyle = '#1c1917';
       ctx.fillRect(player.x - pBarWidth/2 - 2, player.y + player.radius + 10, pBarWidth + 4, 8);
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(player.x - pBarWidth/2, player.y + player.radius + 12, pBarWidth * (player.hp / player.maxHp), 4);
+      const playerHpRatio = (player.maxHp && player.maxHp > 0) ? (player.hp / player.maxHp) : 0;
+      ctx.fillRect(player.x - pBarWidth/2, player.y + player.radius + 12, pBarWidth * Math.max(0, Math.min(1, playerHpRatio)), 4);
 
       // Draw Floating Texts
       floatingTextsRef.current.forEach(t => {
