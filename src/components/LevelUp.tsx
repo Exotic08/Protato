@@ -5,27 +5,53 @@ import { TrendingUp, Shield, Zap, Heart, Target, Move } from 'lucide-react';
 
 interface LevelUpProps {
   onSelectStat: (stat: keyof Stats, value: number) => void;
+  luck?: number;
 }
 
-const STAT_OPTIONS: { name: string; stat: keyof Stats; value: number; icon: any; color: string }[] = [
-  { name: '+2 Max HP', stat: 'maxHp', value: 2, icon: Heart, color: 'text-red-400' },
-  { name: '+2 HP Regen', stat: 'hpRegen', value: 2, icon: Heart, color: 'text-pink-400' },
-  { name: '+10% Damage', stat: 'damagePct', value: 10, icon: Target, color: 'text-orange-400' },
-  { name: '+10% Attack Speed', stat: 'attackSpeed', value: 10, icon: Zap, color: 'text-yellow-400' },
-  { name: '+5% Speed', stat: 'speed', value: 5, icon: Move, color: 'text-blue-400' },
-  { name: '+2 Armor', stat: 'armor', value: 2, icon: Shield, color: 'text-slate-400' },
-  { name: '+5% Dodge', stat: 'dodge', value: 5, icon: Move, color: 'text-purple-400' },
-  { name: '+5% Crit Chance', stat: 'critChance', value: 5, icon: Target, color: 'text-red-600' },
+const STAT_OPTIONS: { name: string; stat: keyof Stats; value: number; icon: any; color: string; rarity: number }[] = [
+  { name: '+2 Max HP', stat: 'maxHp', value: 2, icon: Heart, color: 'text-red-400', rarity: 1 },
+  { name: '+2 HP Regen', stat: 'hpRegen', value: 2, icon: Heart, color: 'text-pink-400', rarity: 1 },
+  { name: '+10% Damage', stat: 'damagePct', value: 10, icon: Target, color: 'text-orange-400', rarity: 2 },
+  { name: '+10% Attack Speed', stat: 'attackSpeed', value: 10, icon: Zap, color: 'text-yellow-400', rarity: 2 },
+  { name: '+5% Speed', stat: 'speed', value: 5, icon: Move, color: 'text-blue-400', rarity: 1 },
+  { name: '+2 Armor', stat: 'armor', value: 2, icon: Shield, color: 'text-slate-400', rarity: 1 },
+  { name: '+5% Dodge', stat: 'dodge', value: 5, icon: Move, color: 'text-purple-400', rarity: 1 },
+  { name: '+5% Crit Chance', stat: 'critChance', value: 5, icon: Target, color: 'text-red-600', rarity: 2 },
 ];
 
-export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat }) => {
-  // Randomly select 3 options
+export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat, luck = 0 }) => {
+  // Randomly select 3 options weighting by luck
   const [options, setOptions] = React.useState<typeof STAT_OPTIONS>([]);
 
   React.useEffect(() => {
-    const shuffled = [...STAT_OPTIONS].sort(() => 0.5 - Math.random());
-    setOptions(shuffled.slice(0, 3));
-  }, []);
+    const luckBonus = luck / 100;
+    const pool = [...STAT_OPTIONS];
+    const selected: typeof STAT_OPTIONS = [];
+    
+    for (let i = 0; i < 3; i++) {
+      if (pool.length === 0) break;
+      
+      const weightedPool = pool.map(stat => ({
+        stat,
+        weight: 1 / (stat.rarity * Math.max(0.1, 1 - luckBonus * 0.5))
+      }));
+      
+      const totalWeight = weightedPool.reduce((acc, p) => acc + p.weight, 0);
+      let r = Math.random() * totalWeight;
+      
+      for (let j = 0; j < weightedPool.length; j++) {
+        const p = weightedPool[j];
+        r -= p.weight;
+        if (r <= 0 || j === weightedPool.length - 1) {
+          selected.push(p.stat);
+          pool.splice(j, 1);
+          break;
+        }
+      }
+    }
+    
+    setOptions(selected);
+  }, [luck]);
 
   return (
     <div className="fixed inset-0 bg-stone-950/90 flex flex-col items-center justify-center p-8 z-50">

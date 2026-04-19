@@ -15,7 +15,7 @@ interface GameCanvasProps {
   gameState: GameState;
   onWaveEnd: (materials: number, xp: number, kills: number, crates: number) => void;
   onGameOver: () => void;
-  onMissionProgress?: (type: 'KILLS' | 'MATERIALS', amount: number) => void;
+  onMissionProgress?: (type: 'KILLS' | 'MATERIALS' | 'SURVIVE_TIME', amount: number) => void;
   playerStats: Stats;
   playerWeapons: Weapon[];
   initialMaterials: number;
@@ -27,6 +27,8 @@ interface GameCanvasProps {
   isHost: boolean;
   displayName: string;
   isMultiplayer: boolean;
+  t?: any;
+  activeMissions?: any[];
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -45,6 +47,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   isHost,
   displayName,
   isMultiplayer,
+  t = {},
+  activeMissions = [],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 4);
@@ -260,6 +264,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     playerRef.current.stats = playerStats;
     playerRef.current.weapons = playerWeapons;
     playerRef.current.materials = initialMaterials;
+    rampCountRef.current = {}; // DESIGN-2: Reset machine gun ramp
     playerRef.current.xp = initialXp;
     playerRef.current.level = initialLevel;
     
@@ -464,6 +469,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // 2. Wave Timer
       waveTimerRef.current -= deltaTime;
+      if (onMissionProgress && deltaTime > 0) onMissionProgress('SURVIVE_TIME' as any, deltaTime);
       if (waveTimerRef.current <= 0) {
         onWaveEnd(player.materials, player.xp, killsRef.current, cratesRef.current);
         return;
@@ -570,24 +576,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
         }
 
-        // Spawn Bosses at specific waves
-        if (wave % 5 === 0 && Math.abs(waveTimerRef.current - 10) < 0.05) {
-          const isMajorBoss = wave % 10 === 0;
-          const bossType = isMajorBoss ? 'BOSS_2' : 'BOSS_1';
-          if (!enemiesRef.current.some(e => e.type === bossType)) {
-            const bossHp = (isMajorBoss ? 1000 : 400) * (1 + (wave / 10));
-            enemiesRef.current.push({
-              id: bossType + '_' + wave,
-              x: MAP_WIDTH / 2, y: -50, 
-              radius: isMajorBoss ? 50 : 40, 
-              hp: bossHp, maxHp: bossHp, 
-              speed: 0.4, damage: 5 * (1 + wave/10), 
-              type: bossType, 
-              color: isMajorBoss ? '#9d174d' : '#4c1d95', 
-              cooldown: 0
-            });
-          }
-        }
+        // Spawn Bosses at specific waves (Moved to isBossWave block)
       }
 
       // 4. Update Enemies
@@ -787,7 +776,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             playDodgeSound();
             spawnParticles(player.x, player.y, '#94a3b8', 6);
             if (Math.random() < 0.2) {
-              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: 'DODGE!', color: '#94a3b8', life: 20 });
+              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: t.dodge || 'DODGE!', color: '#94a3b8', life: 20 });
             }
           } else {
             let actualDamage = 0;
@@ -846,6 +835,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // 5. Weapons Logic (Auto-aim)
       if (!player.isDead) {
         player.weapons.forEach((weapon, index) => {
+          if (weapon.baseId === 'generator') return; // Generator is passive
           const cooldownKey = `weapon_${index}`;
           if (!weaponCooldownsRef.current[cooldownKey]) weaponCooldownsRef.current[cooldownKey] = 0;
           
@@ -919,8 +909,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   
                   // Machine Gun ramp damage
                   const rampBonus = (weapon.baseId === 'machine_gun' ? (rampCountRef.current[weapon.id] || 0) * 0.1 : 0);
+                  // Ancient Book scaling (BUG-5)
+                  const levelBonus = (weapon.baseId === 'ancient_book' ? player.level * 2 : 0);
                   
-                  let finalDamage = (weapon.damage + stats.rangedDamage + bonusDmg + rampBonus) * (1 + stats.damagePct / 100) * damageMultiplier;
+                  let finalDamage = (weapon.damage + stats.rangedDamage + bonusDmg + rampBonus + levelBonus) * (1 + stats.damagePct / 100) * damageMultiplier;
                   
                   // Old Pistol 6th shot crit
                   let isCrit = Math.random() * 100 < stats.critChance;
@@ -962,7 +954,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   
                   const isCrit = Math.random() * 100 < stats.critChance;
                   if (isCrit) {
-                    damage *= 2;
+                    let critMult = 2;
+                    // Assassin Dagger: backstab check
+                    if (weapon.baseId === 'assassin_dagger') {
+                      const playerToEnemy = { x: nearestEnemy.x - player.x, y: nearestEnemy.y - player.y };
+                      const enemyFace = { x: player.x - nearestEnemy.x, y: player.y - nearestEnemy.y };
+                      const dot = playerToEnemy.x * enemyFace.x + playerToEnemy.y * enemyFace.y;
+                      const magP = Math.sqrt(playerToEnemy.x**2 + playerToEnemy.y**2);
+                      const magE = Math.sqrt(enemyFace.x**2 + enemyFace.y**2);
+                      const cosTheta = dot / (magP * magE);
+                      const angle = Math.acos(cosTheta) * (180 / Math.PI);
+                      if (angle < 45) {
+                        critMult = 4;
+                        floatingTextsRef.current.push({ x: nearestEnemy.x, y: nearestEnemy.y - 30, text: t.backstab || 'BACKSTAB!', color: '#ef4444', life: 30 });
+                      }
+                    }
+                    damage *= critMult;
                     if (weapon.passive?.trigger === 'ON_CRIT') {
                       if (weapon.passive.type === 'HEAL') player.hp = Math.min(player.maxHp, player.hp + weapon.passive.value);
                     }
@@ -1044,7 +1051,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const d = Math.sqrt((p.x - player.x) ** 2 + (p.y - player.y) ** 2);
           if (d < p.radius + player.radius) {
             if (Math.random() * 100 < stats.dodge) {
-              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: 'DODGE!', color: '#94a3b8', life: 20 });
+              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: t.dodge || 'DODGE!', color: '#94a3b8', life: 20 });
               playDodgeSound(); // DODGE SOUND
               spawnParticles(player.x, player.y, '#94a3b8', 6);
               return false; // Dodged, but projectile still destroyed
@@ -1092,7 +1099,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     enemiesToDamage.push(e);
                   }
                 });
-                floatingTextsRef.current.push({ x: p.x, y: p.y, text: isDouble ? 'DOUBLE BOOM!' : 'BOOM!', color: '#fb923c', life: 20 });
+                floatingTextsRef.current.push({ x: p.x, y: p.y, text: isDouble ? (t.doubleBoom || 'DOUBLE BOOM!') : (t.boom || 'BOOM!'), color: '#fb923c', life: 20 });
                 if (isDouble) {
                   // Push them twice to double the damage they take later
                   enemiesToDamage = [...enemiesToDamage, ...enemiesToDamage];
@@ -1144,12 +1151,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     if (!e.statusEffects) e.statusEffects = [];
                     const existing = e.statusEffects.find(eff => eff.type === 'SLOW');
                     if (existing) { existing.timer = 0; }
-                    else { e.statusEffects.push({ type: 'SLOW', value: p.passive.value, duration: p.passive.duration || 3, timer: 0 }); }
-                  } else if (p.passive.type === 'FREEZE' && Math.random() < (p.passive.chance || 0) / 100) {
+                    else { e.statusEffects.push({ type: 'SLOW', value: passiveValue || 30, duration: passiveDuration || 3, timer: 0 }); }
+                  } else if (passiveType === 'FREEZE' && Math.random() < (passiveChance || 0) / 100) {
                     if (!e.statusEffects) e.statusEffects = [];
                     const existing = e.statusEffects.find(eff => eff.type === 'FREEZE');
                     if (existing) { existing.timer = 0; }
-                    else { e.statusEffects.push({ type: 'FREEZE', value: p.passive.value, duration: p.passive.duration || 1, timer: 0 }); }
+                    else { e.statusEffects.push({ type: 'FREEZE', value: passiveValue || 1, duration: passiveDuration || 1, timer: 0 }); }
                   }
                 }
 
@@ -1161,8 +1168,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 });
               });
               
-              if (p.isCrit && p.passive?.trigger === 'ON_CRIT' && p.passive.type === 'HEAL') {
-                player.hp = Math.min(player.maxHp, player.hp + p.passive.value);
+              if (p.isCrit && p.passive?.trigger === 'ON_CRIT' && p.passive?.type === 'HEAL') {
+                player.hp = Math.min(player.maxHp, (player.hp || 0) + (p.passive?.value || 0));
               }
 
               let projectileDies = true;
@@ -1243,7 +1250,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (enemy.type === 'LOOT_GOBLIN' || enemy.type === 'BOSS_1' || enemy.type === 'BOSS_2') {
             cratesRef.current += 1;
             floatingTextsRef.current.push({
-              x: enemy.x, y: enemy.y, text: 'CRATE DROPPED!', color: '#10b981', life: 60
+              x: enemy.x, y: enemy.y, text: t.crateDropped || 'CRATE DROPPED!', color: '#10b981', life: 60
             });
           }
 
@@ -1661,6 +1668,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fill();
         ctx.strokeStyle = '#78350f'; // amber-900
         ctx.lineWidth = 3;
+        
+        // Oxygen Tank pulsing outline (DESIGN-5)
+        if (invincibilityTimerRef.current > 0) {
+           ctx.strokeStyle = '#38bdf8'; // sky-400
+           ctx.lineWidth = 4 + Math.sin(Date.now() / 100) * 2;
+        }
+
         ctx.stroke();
   
         // Draw Player Name

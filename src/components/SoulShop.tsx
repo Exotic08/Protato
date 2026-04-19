@@ -78,7 +78,7 @@ export const SoulShop: React.FC<SoulShopProps> = ({ metaStats, onUpgrade, onBack
                   {upgrade.description}
                 </p>
                 <p className="text-green-400 text-[10px] font-black uppercase">
-                  {t.currentBonus}: <span className="text-white">+{level * upgrade.valuePerLevel}{upgrade.stat === 'speed' ? 'px' : upgrade.stat === 'maxHp' ? 'HP' : '%'}</span>
+                  {t.currentBonus}: <span className="text-white">+{level * upgrade.valuePerLevel}{upgrade.stat === 'maxHp' ? ' HP' : upgrade.stat === 'pickupRange' ? ' px' : '%'}</span>
                 </p>
               </div>
 

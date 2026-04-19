@@ -135,12 +135,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (gameState === 'MENU') {
+    if (gameState === 'MENU' || gameState === 'MULTIPLAYER_MENU' || gameState === 'ROOM_LOBBY') {
       startBGM('menu');
     } else if (gameState === 'PLAYING') {
       startBGM('gameplay');
     } else if (gameState === 'GAME_OVER') {
       startBGM('gameover');
+    } else if (gameState === 'VICTORY') {
+      stopBGM();
     }
   }, [gameState]);
 
@@ -269,6 +271,27 @@ export default function App() {
     initAudio();
     playClickSound();
     
+    setGameMode(mode);
+
+    // Generate unique missions for this run if MISSION mode
+    if (mode === 'MISSION') {
+      const possibleMissions = [
+        { id: 'm1', title: 'Slayer', description: 'Kill 50 enemies', target: 50, current: 0, type: 'KILLS', reward: 50 },
+        { id: 'm2', title: 'Hoarder', description: 'Collect 100 materials', target: 100, current: 0, type: 'MATERIALS', reward: 100 },
+        { id: 'm3', title: 'Time Survivor', description: 'Survive for 60 seconds', target: 60, current: 0, type: 'SURVIVE_TIME', reward: 75 },
+        { id: 'm4', title: 'Elite Hunter', description: 'Kill 150 enemies', target: 150, current: 0, type: 'KILLS', reward: 150 },
+      ];
+      // Randomly pick 2
+      const shuffled = [...possibleMissions].sort(() => 0.5 - Math.random());
+      setMissions(shuffled.slice(0, 2));
+    } else {
+      // Default missions for context tracking
+      setMissions([
+        { id: 'm1', title: 'Slayer', description: 'Kill 50 enemies', target: 50, current: 0, type: 'KILLS', reward: 50 },
+        { id: 'm2', title: 'Hoarder', description: 'Collect 100 materials', target: 100, current: 0, type: 'MATERIALS', reward: 100 },
+      ]);
+    }
+
     // Apply meta upgrades to base stats
     let upgradedStats = { ...INITIAL_STATS };
     const currentMetaUpgrades = metaStats.upgrades || {};
@@ -419,15 +442,30 @@ export default function App() {
     setXp(0);
     setLevel(1);
     
-    // Apply character base stats modifier
-    const startingStats = { ...INITIAL_STATS };
+    // Apply meta upgrades and character mods (BUG-1 Fix)
+    let startingStats = { ...INITIAL_STATS };
+    const currentMetaUpgrades = metaStats.upgrades || {};
+    
+    META_UPGRADES.forEach(upgrade => {
+      const level = currentMetaUpgrades[upgrade.id] || 0;
+      if (level > 0) {
+        const bonus = level * upgrade.valuePerLevel;
+        (startingStats as any)[upgrade.stat] += bonus;
+      }
+    });
+
     if (selectedCharacter) {
       Object.entries(selectedCharacter.statsModifier).forEach(([key, val]) => {
         (startingStats as any)[key] += val;
       });
     }
+
+    // BUG-4: Generator passive check
+    if (weapon.baseId === 'generator') {
+      startingStats.rangedDamage += 10;
+    }
+
     setStats(startingStats);
-    
     setWeapons([weapon]);
     setItems([]);
 
@@ -549,24 +587,40 @@ export default function App() {
   const handleBuyWeapon = (weapon: Weapon) => {
     setWeapons(prev => [...prev, weapon]);
     setMaterials(prev => prev - weapon.price);
+    // BUG-4: Generator Fix
+    if (weapon.baseId === 'generator') {
+      setStats(prev => ({ ...prev, rangedDamage: prev.rangedDamage + 10 }));
+    }
   };
 
   const handleUpgradeWeapon = (index: number, nextWeapon: Weapon) => {
+    const oldWeapon = weapons[index];
     setMaterials(prev => prev - nextWeapon.price);
     setWeapons(prev => {
       const newWeapons = [...prev];
       newWeapons[index] = nextWeapon;
       return newWeapons;
     });
+
+    // BUG-4: If somehow we upgraded from/to a different weapon (unlikely with generator tier 4)
+    if (oldWeapon.baseId !== nextWeapon.baseId) {
+      if (oldWeapon.baseId === 'generator') setStats(prev => ({ ...prev, rangedDamage: prev.rangedDamage - 10 }));
+      if (nextWeapon.baseId === 'generator') setStats(prev => ({ ...prev, rangedDamage: prev.rangedDamage + 10 }));
+    }
   };
 
   const handleSellWeapon = (index: number, price: number) => {
+    const weapon = weapons[index];
     setMaterials(prev => prev + price);
     setWeapons(prev => {
       const newWeapons = [...prev];
       newWeapons.splice(index, 1);
       return newWeapons;
     });
+    // BUG-4: Generator Fix
+    if (weapon && weapon.baseId === 'generator') {
+      setStats(prev => ({ ...prev, rangedDamage: prev.rangedDamage - 10 }));
+    }
   };
 
   const handleBuyItem = (item: Item) => {
@@ -950,10 +1004,10 @@ export default function App() {
             <h2 className="text-5xl font-black mb-8 text-amber-500 flex items-center gap-4 drop-shadow-[0_4px_0_rgb(180,83,9)]">
               <Target className="w-10 h-10" /> {t.activeMissions}
             </h2>
-            <div className="space-y-4 mb-8">
+            <div className="space-y-4 mb-8 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
               {missions.map(m => {
-                const title = m.id === 'm1' ? t.missionSlayerTitle : t.missionHoarderTitle;
-                const desc = m.id === 'm1' ? t.missionSlayerDesc : t.missionHoarderDesc;
+                const title = m.id === 'm1' ? t.missionSlayerTitle : m.id === 'm2' ? t.missionHoarderTitle : m.title;
+                const desc = m.id === 'm1' ? t.missionSlayerDesc : m.id === 'm2' ? t.missionHoarderDesc : m.description;
                 return (
                   <div key={m.id} className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700 shadow-inner">
                     <div className="flex justify-between items-start mb-2">
@@ -967,14 +1021,22 @@ export default function App() {
                         style={{ width: `${(m.current / m.target) * 100}%` }}
                       />
                     </div>
-                    <div className="text-right text-xs font-bold text-stone-500 mt-2">{m.current} / {m.target}</div>
+                    <div className="text-right text-xs font-bold text-stone-500 mt-2">{Math.floor(m.current)} / {m.target}</div>
                   </div>
                 );
               })}
             </div>
+            
+            <button 
+              onClick={() => { playClickSound(); startGame('MISSION'); }}
+              className="w-full py-5 bg-amber-600 hover:bg-amber-500 text-white font-black text-2xl rounded-2xl border-4 border-b-8 border-amber-800 active:border-b-4 active:translate-y-1 transition-all mb-4"
+            >
+              🚀 {t.startMissionRun || 'START MISSION RUN'}
+            </button>
+
             <button 
               onClick={() => setGameState('MENU')}
-              className="w-full py-4 bg-stone-200 hover:bg-white text-stone-950 font-black text-xl rounded-2xl border-4 border-b-8 border-stone-400 active:border-b-4 active:translate-y-1 transition-all"
+              className="w-full py-4 bg-stone-800 hover:bg-stone-700 text-stone-100 font-black text-xl rounded-2xl border-4 border-b-8 border-stone-950 active:border-b-4 active:translate-y-1 transition-all"
             >
               {t.backToMenu}
             </button>
@@ -1016,6 +1078,7 @@ export default function App() {
             <OpenCrate 
               onItemSelect={handleCrateOpened}
               cratesRemaining={cratesToOpen}
+              luck={stats.luck}
             />
           </motion.div>
         )}
@@ -1043,10 +1106,15 @@ export default function App() {
               displayName={displayName || 'Potato'}
               isMultiplayer={!!roomId}
               onMissionProgress={(type, amount) => {
-                if (type === 'KILLS') {
-                  // Handled at wave end for performance, or we could track here
-                }
+                setMissions(prev => prev.map(m => {
+                  if (m.type === type) {
+                    return { ...m, current: Math.min(m.target, m.current + amount) };
+                  }
+                  return m;
+                }));
               }}
+              t={t}
+              activeMissions={missions.filter(m => m.current < m.target)}
             />
           </motion.div>
         )}
@@ -1080,6 +1148,7 @@ export default function App() {
           <LevelUp 
             key="levelup"
             onSelectStat={handleLevelUp}
+            luck={stats.luck}
           />
         )}
 

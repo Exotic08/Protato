@@ -53,7 +53,7 @@ export const Shop: React.FC<ShopProps> = ({
       if (poolCopy.length === 0) break;
       const weightedPool = poolCopy.map(item => ({
         item,
-        weight: 1 / (item.rarity * (1 - luckBonus * 0.5))
+        weight: 1 / (item.rarity * Math.max(0.1, 1 - luckBonus * 0.5))
       }));
       const totalWeight = weightedPool.reduce((acc, p) => acc + p.weight, 0);
       let r = Math.random() * totalWeight;

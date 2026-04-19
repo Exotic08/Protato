@@ -20,7 +20,7 @@ export const OpenCrate: React.FC<OpenCrateProps> = ({ onItemSelect, cratesRemain
     const luckBonus = luck / 100;
     const weightedPool = ITEMS.map(i => ({
       item: i,
-      weight: 1 / (i.rarity * (1 - luckBonus * 0.5))
+      weight: 1 / (i.rarity * Math.max(0.1, 1 - luckBonus * 0.5))
     }));
     const totalWeight = weightedPool.reduce((acc, p) => acc + p.weight, 0);
     let r = Math.random() * totalWeight;

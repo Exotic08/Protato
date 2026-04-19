@@ -59,7 +59,7 @@ export const META_UPGRADES: MetaUpgrade[] = [
   {
     id: 'pickup',
     name: 'MAGNETISM',
-    description: 'Increasrs pickup range.',
+    description: 'Increases pickup range.',
     stat: 'pickupRange',
     valuePerLevel: 20,
     basePrice: 50,
