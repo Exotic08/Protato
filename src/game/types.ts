@@ -72,6 +72,9 @@ export interface PassiveAbility {
   description: string;
 }
 
+export type WeaponTag = 'Primitive' | 'Blade' | 'Heavy' | 'Unarmed' | 'Ethereal' 
+                      | 'Gun' | 'Support' | 'Tool' | 'Blunt' | 'Explosive';
+
 export interface Weapon {
   id: string;
   name: string;
@@ -92,6 +95,9 @@ export interface Weapon {
   bounces?: number;
   aoeRadius?: number;
   cleave?: number;
+  tags?: WeaponTag[];
+  meleeDamageScaling?: number;  // 0-1, default 1.0
+  rangedDamageScaling?: number; // 0-1, default 1.0
 }
 
 export interface Item {

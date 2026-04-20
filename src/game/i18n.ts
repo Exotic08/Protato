@@ -55,6 +55,13 @@ export const translations = {
     luck: 'Luck',
     harvest: 'Harvest',
     
+    // Combat Effects
+    dodgeText: 'DODGE!',
+    backstab: 'BACKSTAB!',
+    boom: 'BOOM!',
+    crateDropped: 'CRATE DROPPED!',
+    doubleBoom: 'DOUBLE BOOM!',
+    
     // Shop
     shop: 'Shop',
     reroll: 'Reroll',
@@ -133,6 +140,13 @@ export const translations = {
     hpRegen: 'Hồi máu',
     luck: 'May mắn',
     harvest: 'Thu hoạch',
+    
+    // Combat Effects
+    dodgeText: 'NÉ ĐÒN!',
+    backstab: 'ĐÂM SAU LƯNG!',
+    boom: 'BÙM!',
+    crateDropped: 'RƠI HÒM!',
+    doubleBoom: 'BÙM KÉP!',
     
     // Shop
     shop: 'Cửa hàng',

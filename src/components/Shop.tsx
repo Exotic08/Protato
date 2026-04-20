@@ -2,7 +2,7 @@ import React from 'react';
 import { Weapon, Item, Stats } from '../game/types';
 import { WEAPONS, ITEMS, getNextTier } from '../game/constants';
 import { motion } from 'motion/react';
-import { ShoppingCart, RefreshCw, ArrowUpCircle, Coins } from 'lucide-react';
+import { ShoppingCart, RefreshCw, ArrowUpCircle, Coins, Lock, Unlock, Combine } from 'lucide-react';
 import { WeaponIllustration, ItemIllustration } from './Illustration';
 import { playClickSound, playBuySound, playErrorSound } from '../game/audio';
 
@@ -25,46 +25,65 @@ export const Shop: React.FC<ShopProps> = ({
   materials, playerStats, onBuyWeapon, onBuyItem, onUpgradeWeapon, onSellWeapon, onReroll, onNextWave, currentWeapons, wave, multiplayerReadyCount, multiplayerTotalCount 
 }) => {
   const [shopItems, setShopItems] = React.useState<(Weapon | Item)[]>([]);
-  const [rerollCost, setRerollCost] = React.useState(Math.max(1, Math.floor(wave / 2)));
+  const [lockedItemIds, setLockedItemIds] = React.useState<string[]>([]);
+  const rerollIncrement = Math.max(1, Math.floor(0.40 * wave));
+  const rerollBasePrice = Math.floor(wave * 0.75) + rerollIncrement;
+  const [rerollCost, setRerollCost] = React.useState(rerollBasePrice);
 
   const getDynamicPrice = (basePrice: number) => {
-    // Price increases slightly with wave to maintain balance
-    // Apply shopPrice stat (e.g. -10 for 10% discount)
-    const waveScaling = 1 + (wave - 1) * 0.1;
-    const statScaling = 1 + (playerStats.shopPrice / 100);
-    return Math.max(1, Math.floor(basePrice * waveScaling * statScaling));
+    // Price = floor(BasePrice * (1 + Wave * 0.1)) per GDD
+    const waveInflation = 1 + wave * 0.1;
+    const shopDiscount = 1 + (playerStats.shopPrice / 100);
+    return Math.max(1, Math.floor(basePrice * waveInflation * shopDiscount));
+  };
+
+  const getRarityByWave = (wave: number, luck: number): number => {
+    const luckMultiplier = 1 + luck / 100;
+    
+    // T4: min wave 8, base 0%, +0.23%/wave, max 8%
+    const t4Chance = Math.min(8, Math.max(0, (wave - 8 - 1) * 0.23) * luckMultiplier);
+    // T3: min wave 4, base 0%, +2%/wave, max 25%
+    const t3Chance = Math.min(25, Math.max(0, (wave - 4 - 1) * 2) * luckMultiplier);
+    // T2: min wave 2, base 0%, +6%/wave, max 60%
+    const t2Chance = Math.min(60, Math.max(0, (wave - 2 - 1) * 6) * luckMultiplier);
+    
+    // Top-down check
+    const roll = Math.random() * 100;
+    if (roll < t4Chance) return 4;
+    if (roll < t3Chance) return 3;
+    if (roll < t2Chance) return 2;
+    return 1;
   };
 
   const generateItems = () => {
-    // Filter pool based on wave: higher waves unlock higher rarity
-    const maxRarity = wave <= 3 ? 1 : wave <= 6 ? 2 : wave <= 10 ? 3 : 4;
+    const selected: (Weapon | Item)[] = [];
+    const used = new Set<string>();
+
+    // Keep locked items (MISSING-6)
+    const preserved = shopItems.filter(item => lockedItemIds.includes(item.id));
+    selected.push(...preserved);
+    preserved.forEach(item => used.add(item.id));
     
-    const weaponPool = WEAPONS.filter(w => w.rarity <= maxRarity);
-    const itemPool = ITEMS.filter(i => i.rarity <= maxRarity);
-    
-    const pool = [...weaponPool, ...itemPool];
-    
-    // Weight by rarity and luck
-    const luckBonus = playerStats.luck / 100;
-    const selected = [];
-    const poolCopy = [...pool];
-    
-    for (let i = 0; i < 4; i++) {
-      if (poolCopy.length === 0) break;
-      const weightedPool = poolCopy.map(item => ({
-        item,
-        weight: 1 / (item.rarity * Math.max(0.1, 1 - luckBonus * 0.5))
-      }));
-      const totalWeight = weightedPool.reduce((acc, p) => acc + p.weight, 0);
-      let r = Math.random() * totalWeight;
-      for (let j = 0; j < weightedPool.length; j++) {
-        const p = weightedPool[j];
-        r -= p.weight;
-        if (r <= 0 || j === weightedPool.length - 1) {
-          selected.push({ ...p.item, price: getDynamicPrice(p.item.price) });
-          poolCopy.splice(j, 1);
-          break;
+    // Generate remaining items using proper rarity algorithm
+    const slotsToFill = 4 - selected.length;
+    for (let slot = 0; slot < slotsToFill; slot++) {
+      const targetRarity = getRarityByWave(wave, playerStats.luck);
+      const weaponPool = WEAPONS.filter(w => w.rarity === targetRarity && !used.has(w.id));
+      const itemPool = ITEMS.filter(i => i.rarity === targetRarity && !used.has(i.id));
+      const pool = [...weaponPool, ...itemPool];
+      
+      if (pool.length === 0) {
+        // Fallback to any available rarity
+        const fallback = [...WEAPONS, ...ITEMS].filter(x => !used.has(x.id));
+        if (fallback.length > 0) {
+          const pick = fallback[Math.floor(Math.random() * fallback.length)];
+          used.add(pick.id);
+          selected.push({ ...pick, price: getDynamicPrice(pick.price) });
         }
+      } else {
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        used.add(pick.id);
+        selected.push({ ...pick, price: getDynamicPrice(pick.price) });
       }
     }
     
@@ -79,10 +98,31 @@ export const Shop: React.FC<ShopProps> = ({
     if (materials >= rerollCost) {
       onReroll(rerollCost);
       generateItems();
-      setRerollCost(prev => prev + 1);
+      setLockedItemIds([]); // Reset locks on reroll as per standard genre rules
+      setRerollCost(prev => prev + rerollIncrement);
       playClickSound();
     } else {
       playErrorSound();
+    }
+  };
+
+  const toggleLock = (itemId: string) => {
+    setLockedItemIds(prev => 
+      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+    );
+    playClickSound();
+  };
+
+  const handleCombine = (w1Idx: number, w2Idx: number) => {
+    const w1 = currentWeapons[w1Idx];
+    const w2 = currentWeapons[w2Idx];
+    if (w1.baseId === w2.baseId && w1.rarity === w2.rarity && w1.rarity < 4) {
+      const next = getNextTier(w1);
+      if (next) {
+        onSellWeapon(w2Idx, 0); // Remove one silently
+        onUpgradeWeapon(w1Idx, next); // Upgrade the other
+        playBuySound();
+      }
     }
   };
 
@@ -141,128 +181,160 @@ export const Shop: React.FC<ShopProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-950/95 flex flex-col items-center justify-start p-2 md:p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-[5px] z-50 overflow-hidden">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-4 md:p-6 max-w-[1600px] w-full shadow-2xl my-auto"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-900 border-4 md:border-8 border-stone-800 rounded-[2.5rem] md:rounded-[4rem] p-6 md:p-12 flex flex-col shadow-[0_0_150px_rgba(0,0,0,1)] overflow-hidden"
+        style={{ width: '95vw', height: '90vh' }}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl md:text-3xl font-black text-amber-500 flex items-center gap-3 drop-shadow-[0_4px_0_rgb(180,83,9)]">
-            <ShoppingCart className="w-6 h-6 md:w-8 md:h-8" />
-            SHOP
-          </h2>
-          <div className="flex items-center gap-3">
-            <div className="text-lg font-black text-green-400 bg-stone-950 px-4 py-1.5 rounded-xl border-4 border-stone-800 shadow-inner">
-              {materials} MATERIALS
-            </div>
-            <button
-              onClick={handleReroll}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-xl font-black text-base border-4 border-b-8 transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-1' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
-            >
-              <RefreshCw className="w-4 h-4" /> REROLL ({rerollCost})
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
-          {shopItems.map((item) => {
-            const isWeapon = 'type' in item;
-            const rarityClass = getRarityColor(item.rarity);
-            
-            return (
-              <motion.div
-                key={item.id}
-                whileHover={{ y: -4, scale: 1.02 }}
-                className={`border-4 rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 cursor-pointer transition-all active:translate-y-1 ${rarityClass} min-h-[160px] md:min-h-[200px]`}
-                style={{ borderBottomWidth: '8px' }}
-                onClick={() => handleBuy(item)}
+        <div className="overflow-y-auto flex-1 pr-3 custom-scrollbar pb-10">
+          <div className="flex justify-between items-center mb-10 flex-wrap gap-6 sticky top-0 bg-stone-900/95 z-30 pb-6 border-b-4 border-stone-800">
+            <h2 className="text-4xl md:text-7xl font-black text-amber-500 flex items-center gap-4 md:gap-6 drop-shadow-[0_8px_0_rgb(180,83,9)] italic">
+              <ShoppingCart className="w-10 h-10 md:w-16 md:h-16" />
+              SHOP
+            </h2>
+            <div className="flex items-center gap-4 md:gap-10">
+              <div className="text-2xl md:text-4xl font-black text-green-400 bg-stone-950 px-6 py-3 md:px-10 md:py-4 rounded-2xl border-4 border-stone-800 shadow-inner flex items-center gap-3">
+                <Coins className="w-8 h-8 md:w-12 md:h-12 text-amber-500" />
+                {materials}
+              </div>
+              <button
+                onClick={handleReroll}
+                className={`flex items-center gap-3 px-6 py-3 md:px-10 md:py-4 rounded-2xl font-black text-xl md:text-3xl border-4 border-b-[12px] md:border-b-[16px] transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-3' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
               >
-                <div className="flex flex-col md:flex-row gap-2 md:gap-3">
-                  <div className={`w-12 h-12 md:w-20 md:h-20 rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-stone-800 to-stone-950 border-2 md:border-4 border-black/20 shadow-inner overflow-hidden relative mx-auto md:mx-0`}>
-                    {isWeapon ? (
-                      <WeaponIllustration id={item.id} size={48} className="relative z-10" />
-                    ) : (
-                      <ItemIllustration id={item.id} size={48} className="relative z-10" />
-                    )}
-                  </div>
-                  <div className="flex-1 overflow-hidden text-center md:text-left">
-                    <div className="flex justify-between items-start gap-1">
-                      <h3 className="text-xs md:text-lg font-black uppercase leading-tight truncate w-full">{item.name}</h3>
-                    </div>
-                    <div className="flex items-center justify-center md:justify-start gap-1 mt-1">
-                      <span className="text-green-400 font-black text-xs md:text-sm">{item.price}</span>
-                      <Coins className="w-3 h-3 text-amber-500" />
-                    </div>
-                    <p className="text-stone-300 text-[9px] md:text-[10px] font-bold mt-2 uppercase leading-tight bg-black/20 p-1 md:p-1.5 rounded-lg border border-white/5 line-clamp-2 md:line-clamp-none">
-                      {isWeapon ? ((item as Weapon).description || `DMG: ${(item as Weapon).damage}`) : (item as Item).description}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-auto h-10">
-                  <button 
-                    className={`w-full h-full rounded-xl text-base font-black transition-all border-b-4 active:border-b-0 active:translate-y-1 ${materials >= item.price ? 'bg-amber-500 text-stone-950 border-amber-700 hover:bg-amber-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
-                  >
-                    {materials >= item.price ? 'BUY' : 'INSUFFICIENT FUNDS'}
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                <RefreshCw className="w-6 h-6 md:w-10 md:h-10" /> REROLL ({rerollCost})
+              </button>
+            </div>
+          </div>
 
-        <div className="mb-6 bg-stone-950 p-3 md:p-4 rounded-2xl border-4 border-stone-800">
-          <h3 className="text-lg font-black text-stone-400 mb-3 md:mb-4 flex items-center gap-2 uppercase">
-            <ArrowUpCircle className="w-5 h-5" /> YOUR WEAPONS (UPGRADE / SELL)
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-            {currentWeapons.map((w, i) => {
-              const next = getNextTier(w);
-              const rarityClass = getRarityColor(w.rarity);
-              const sellPrice = Math.floor(w.price * 0.5);
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-12 mb-14">
+            {shopItems.map((item) => {
+              const isWeapon = 'type' in item;
+              const rarityClass = getRarityColor(item.rarity);
               
               return (
-                <div key={i} className={`border-4 rounded-xl p-2 md:p-3 text-center flex flex-col justify-between ${rarityClass} bg-stone-900`}>
-                  <div>
-                    <div className="flex justify-center mb-2">
-                       <div className="w-12 h-12 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center text-3xl shadow-inner">
-                         <WeaponIllustration id={w.id} size={40} />
-                       </div>
+                <motion.div
+                  key={item.id}
+                  whileHover={{ y: -10, scale: 1.03 }}
+                  className={`border-4 md:border-8 rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-10 flex flex-col gap-6 md:gap-10 cursor-pointer transition-all active:translate-y-3 ${rarityClass} min-h-[280px] md:min-h-[450px] relative shadow-[0_20px_40px_rgba(0,0,0,0.5)]`}
+                  style={{ borderBottomWidth: '16px' }}
+                  onClick={() => handleBuy(item)}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleLock(item.id); }}
+                    className={`absolute top-3 md:top-6 right-3 md:right-6 p-3 md:p-5 rounded-2xl border-4 md:border-8 z-20 transition-all ${lockedItemIds.includes(item.id) ? 'bg-amber-500 border-amber-700 text-stone-900 shadow-[0_6px_0_rgb(180,83,9)] scale-110' : 'bg-stone-800 border-stone-900 text-stone-500 hover:text-stone-300'}`}
+                  >
+                    {lockedItemIds.includes(item.id) ? <Lock className="w-8 h-8 md:w-12 md:h-12" /> : <Unlock className="w-8 h-8 md:w-12 md:h-12" />}
+                  </button>
+
+                  <div className="flex flex-col gap-6 md:gap-10">
+                    <div className={`w-28 h-28 md:w-48 md:h-48 rounded-[2rem] md:rounded-[3rem] flex items-center justify-center bg-gradient-to-br from-stone-800 to-stone-950 border-4 md:border-8 border-black/20 shadow-inner overflow-hidden relative mx-auto`}>
+                      {isWeapon ? (
+                        <WeaponIllustration id={item.id} size={80} className="md:hidden relative z-10" />
+                      ) : (
+                        <ItemIllustration id={item.id} size={80} className="md:hidden relative z-10" />
+                      )}
+                      {isWeapon ? (
+                        <WeaponIllustration id={item.id} size={140} className="hidden md:block relative z-10" />
+                      ) : (
+                        <ItemIllustration id={item.id} size={140} className="hidden md:block relative z-10" />
+                      )}
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent)]" />
                     </div>
-                    <div className="text-[10px] font-black truncate mb-2 uppercase">{w.name}</div>
+                    <div className="flex-1 text-center w-full">
+                      <h3 className="text-xl md:text-4xl font-black uppercase leading-tight mb-3 md:mb-4 tracking-tight">{item.name}</h3>
+                      <div className="flex items-center justify-center gap-3 mb-6 md:mb-8">
+                        <span className="text-green-400 font-black text-2xl md:text-5xl">{item.price}</span>
+                        <Coins className="w-8 h-8 md:w-12 md:h-12 text-amber-500" />
+                      </div>
+                      <p className="text-stone-300 text-xs md:text-xl font-black uppercase leading-tight bg-black/40 p-4 md:p-8 rounded-[1.5rem] md:rounded-[2rem] border border-white/5 line-clamp-3 md:line-clamp-none italic">
+                        {isWeapon ? ((item as Weapon).description || `DMG: ${(item as Weapon).damage}`) : (item as Item).description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    {next ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleUpgrade(i, w); }}
-                        className={`w-full py-1 rounded-lg text-[9px] font-black border-2 ${materials >= getDynamicPrice(next.price) ? 'bg-blue-500 text-white border-blue-700 hover:bg-blue-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
-                      >
-                        UPGRADE ({getDynamicPrice(next.price)})
-                      </button>
-                    ) : (
-                      <div className="text-[9px] text-amber-500 font-black py-1">MAX TIER</div>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onSellWeapon(i, sellPrice); playClickSound(); }}
-                      className="w-full py-1 rounded-lg text-[9px] font-black border-2 bg-red-900/40 text-red-400 border-red-900 hover:bg-red-800/60 transition-colors"
+                  <div className="mt-auto h-16 md:h-24">
+                    <button 
+                      className={`w-full h-full rounded-[1.5rem] md:rounded-[2rem] text-xl md:text-4xl font-black transition-all border-b-8 md:border-b-16 active:border-b-0 active:translate-y-3 ${materials >= item.price ? 'bg-amber-500 text-stone-950 border-amber-700 hover:bg-amber-400' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
                     >
-                      SELL ({sellPrice})
+                      {materials >= item.price ? 'BUY ITEM' : 'NO FUNDS'}
                     </button>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-        </div>
 
-        <div className="flex justify-center pb-2">
-          <button
-            onClick={handleNextWave}
-            disabled={isReady}
-            className={`font-black text-xl md:text-2xl px-12 py-3 md:py-4 rounded-xl border-4 border-b-8 transition-all shadow-2xl ${isReady ? 'bg-stone-600 text-stone-400 border-stone-800 cursor-not-allowed' : 'bg-green-500 text-stone-950 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-1'}`}
-          >
-            {multiplayerTotalCount !== undefined ? (isReady ? `WAITING FOR OTHERS (${multiplayerReadyCount}/${multiplayerTotalCount})` : `NEXT WAVE (${multiplayerReadyCount}/${multiplayerTotalCount})`) : 'NEXT WAVE'}
-          </button>
+          <div className="mb-14 bg-stone-950/50 p-6 md:p-12 rounded-[2.5rem] md:rounded-[4rem] border-4 md:border-8 border-stone-800 shadow-2xl">
+            <h3 className="text-2xl md:text-5xl font-black text-stone-500 mb-8 md:mb-16 flex items-center gap-4 md:gap-8 uppercase tracking-tighter">
+              <ArrowUpCircle className="w-10 h-10 md:w-16 md:h-16" /> HERO ARSENAL
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-8">
+              {currentWeapons.map((w, i) => {
+                const next = getNextTier(w);
+                const rarityClass = getRarityColor(w.rarity);
+                const sellPrice = Math.floor(w.price * 0.5);
+                
+                return (
+                  <div key={i} className={`border-4 md:border-8 rounded-[2rem] md:rounded-[3rem] p-4 md:p-8 text-center flex flex-col justify-between ${rarityClass} bg-stone-900 shadow-xl min-h-[200px] md:min-h-[350px]`}>
+                    <div>
+                      <div className="flex justify-center mb-4 md:mb-8">
+                         <div className="w-16 h-16 md:w-32 md:h-32 rounded-2xl md:rounded-3xl bg-black/60 border-2 md:border-4 border-white/10 flex items-center justify-center shadow-inner relative overflow-hidden group">
+                           <WeaponIllustration id={w.id} size={40} className="md:hidden relative z-10" />
+                           <WeaponIllustration id={w.id} size={90} className="hidden md:block relative z-10" />
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                         </div>
+                      </div>
+                      <div className="text-xs md:text-2xl font-black truncate mb-4 md:mb-8 uppercase tracking-tight">{w.name}</div>
+                    </div>
+                    <div className="flex flex-col gap-3 md:gap-4">
+                      {next ? (
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleUpgrade(i, w); }}
+                            className={`w-full py-3 md:py-4 rounded-xl md:rounded-2xl text-xs md:text-lg font-black border-4 md:border-8 shadow-lg ${materials >= getDynamicPrice(next.price) ? 'bg-blue-600 text-white border-blue-800 hover:bg-blue-500' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
+                          >
+                            UPGRADE ({getDynamicPrice(next.price)})
+                          </button>
+                          
+                          {currentWeapons.some((otherW, otherIdx) => otherIdx !== i && otherW.baseId === w.baseId && otherW.rarity === w.rarity) && (
+                            <button
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                const otherIdx = currentWeapons.findIndex((otherW, idx) => idx !== i && otherW.baseId === w.baseId && otherW.rarity === w.rarity);
+                                handleCombine(i, otherIdx);
+                              }}
+                              className="w-full py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-lg font-black border-4 md:border-8 bg-purple-600 text-white border-purple-800 hover:bg-purple-500 flex items-center justify-center gap-2 shadow-lg"
+                            >
+                              <Combine className="w-4 h-4 md:w-6 md:h-6" /> COMBINE
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-sm md:text-xl text-amber-500 font-black py-3 md:py-4 uppercase tracking-widest bg-stone-950 rounded-2xl border-2 md:border-4 border-stone-800 shadow-inner">MAXED</div>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onSellWeapon(i, sellPrice); playClickSound(); }}
+                        className="w-full py-3 md:py-4 rounded-xl md:rounded-2xl text-xs md:text-lg font-black border-4 md:border-8 bg-red-900/40 text-red-500 border-red-900 hover:bg-red-800/60 transition-colors shadow-md"
+                      >
+                        SELL ({sellPrice})
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-center pb-8 sticky bottom-0 bg-stone-900/95 pt-6 z-30 border-t-4 border-stone-800">
+            <button
+              onClick={handleNextWave}
+              disabled={isReady}
+              className={`font-black text-2xl md:text-6xl px-16 md:px-32 py-6 md:py-12 rounded-[2.5rem] md:rounded-[4rem] border-4 md:border-8 border-b-[16px] md:border-b-[24px] transition-all shadow-[0_30px_60px_rgba(0,0,0,0.6)] ${isReady ? 'bg-stone-600 text-stone-400 border-stone-800 cursor-not-allowed' : 'bg-green-500 text-stone-950 border-green-700 hover:bg-green-400 active:border-b-4 active:translate-y-6 hover:-translate-y-3'}`}
+            >
+              {multiplayerTotalCount !== undefined ? (isReady ? `WAITING... (${multiplayerReadyCount}/${multiplayerTotalCount})` : `READY! (${multiplayerReadyCount}/${multiplayerTotalCount})`) : 'ENTER BATTLE'}
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>

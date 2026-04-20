@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { Shop } from './components/Shop';
 import { LevelUp } from './components/LevelUp';
@@ -13,8 +13,8 @@ import { SoulShop } from './components/SoulShop';
 import { META_UPGRADES } from './game/metaConstants';
 import { ACHIEVEMENTS } from './game/achievements';
 import { Language, translations } from './game/i18n';
-import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData, MetaStats } from './game/types';
-import { INITIAL_STATS, WEAPONS, XP_PER_LEVEL, MULTIPLAYER_SERVER } from './game/constants';
+import { GameState, Stats, Weapon, Item, GameMode, Mission, Character, RoomData, MetaStats, WeaponTag } from './game/types';
+import { INITIAL_STATS, WEAPONS, ITEMS, CHARACTERS, XP_PER_LEVEL, MULTIPLAYER_SERVER, SET_BONUSES, MAP_WIDTH, MAP_HEIGHT } from './game/constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, RotateCcw, Skull, Trophy, Target, Infinity, Settings, LogOut, User as UserIcon, Maximize, Minimize, Users, Sparkles } from 'lucide-react';
 import { auth, db } from './firebase';
@@ -241,6 +241,44 @@ export default function App() {
   const [stats, setStats] = useState<Stats>(INITIAL_STATS);
   const [weapons, setWeapons] = useState<Weapon[]>([WEAPONS[0]]); // Start with a pistol
   const [items, setItems] = useState<Item[]>([]);
+  const [runStats, setRunStats] = useState({ kills: 0, wave: 0, materials: 0 });
+
+  // Weapon Tag Set Bonuses (MISSING-3)
+  const effectiveStats = useMemo(() => {
+    const tagCounts: Record<string, number> = {};
+    weapons.forEach(w => {
+      (w.tags || []).forEach(tag => {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      });
+    });
+    
+    const bonus: Partial<Stats> = {};
+    Object.entries(tagCounts).forEach(([tag, count]) => {
+      const bonuses = SET_BONUSES[tag as WeaponTag] || [];
+      const applicable = bonuses.filter(b => b.count <= count);
+      if (applicable.length > 0) {
+        const topBonus = applicable[applicable.length - 1];
+        Object.entries(topBonus.stats).forEach(([stat, val]) => {
+          (bonus as any)[stat] = ((bonus as any)[stat] || 0) + (val as number);
+        });
+      }
+    });
+
+    const next = { ...stats };
+    
+    // Weapon-specific passives (e.g., Generator BUG-4)
+    weapons.forEach(w => {
+      if (w.baseId === 'generator') {
+        next.rangedDamage += 10;
+      }
+    });
+
+    Object.entries(bonus).forEach(([key, val]) => {
+      (next as any)[key] += val;
+    });
+    return next;
+  }, [stats, weapons]);
+
   const [missions, setMissions] = useState<Mission[]>([
     { id: 'm1', title: 'Slayer', description: 'Kill 50 enemies', target: 50, current: 0, type: 'KILLS', reward: 50 },
     { id: 'm2', title: 'Hoarder', description: 'Collect 100 materials', target: 100, current: 0, type: 'MATERIALS', reward: 100 },
@@ -560,7 +598,18 @@ export default function App() {
         update(ref(db, `rooms/${roomId}`), { state: 'SHOP' });
       }
     }
-  }, [level, globalStats, materials, wave, roomId, user, roomData, gameMode]);
+
+    // Harvesting compounding growth (MISSING-1)
+    if (stats.harvest > 0) {
+      setStats(prev => {
+        const isEndless = gameMode === 'ENDLESS' || wave > 20;
+        const newHarvest = isEndless
+          ? Math.max(0, Math.floor(prev.harvest * 0.80))
+          : Math.ceil(prev.harvest * 1.05);
+        return { ...prev, harvest: newHarvest };
+      });
+    }
+  }, [level, globalStats, materials, wave, roomId, user, roomData, gameMode, stats.harvest]);
 
   const handleLevelUp = (stat: keyof Stats, value: number) => {
     setStats(prev => ({ ...prev, [stat]: prev[stat] + value }));
@@ -587,10 +636,6 @@ export default function App() {
   const handleBuyWeapon = (weapon: Weapon) => {
     setWeapons(prev => [...prev, weapon]);
     setMaterials(prev => prev - weapon.price);
-    // BUG-4: Generator Fix
-    if (weapon.baseId === 'generator') {
-      setStats(prev => ({ ...prev, rangedDamage: prev.rangedDamage + 10 }));
-    }
   };
 
   const handleUpgradeWeapon = (index: number, nextWeapon: Weapon) => {
@@ -1094,7 +1139,7 @@ export default function App() {
               gameState={gameState}
               onWaveEnd={handleWaveEnd}
               onGameOver={handleGameOver}
-              playerStats={stats}
+              playerStats={effectiveStats}
               playerWeapons={weapons}
               initialMaterials={materials}
               initialXp={xp}
@@ -1108,7 +1153,11 @@ export default function App() {
               onMissionProgress={(type, amount) => {
                 setMissions(prev => prev.map(m => {
                   if (m.type === type) {
-                    return { ...m, current: Math.min(m.target, m.current + amount) };
+                    const next = Math.min(m.target, m.current + amount);
+                    if (next >= m.target && m.current < m.target) {
+                      setMaterials(curr => curr + m.reward);
+                    }
+                    return { ...m, current: next };
                   }
                   return m;
                 }));
@@ -1193,14 +1242,18 @@ export default function App() {
             <Trophy className="w-32 h-32 text-amber-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(180,83,9)]" />
             <h2 className="text-8xl font-black text-amber-500 mb-4 drop-shadow-[0_6px_0_rgb(180,83,9)] uppercase">{t.victory}</h2>
             <p className="text-stone-200 text-3xl font-black mb-6 uppercase">You have survived {t.wave} 20!</p>
-            <div className="grid grid-cols-2 gap-4 mb-12">
+            <div className="grid grid-cols-3 gap-4 mb-12">
               <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
-                <p className="text-stone-400 text-sm font-bold uppercase">Total Kills</p>
-                <p className="text-2xl font-black text-white">{globalStats.totalKills}</p>
+                <p className="text-stone-400 text-sm font-bold uppercase">Kills</p>
+                <p className="text-2xl font-black text-white">{runStats.kills}</p>
+              </div>
+              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
+                <p className="text-stone-400 text-sm font-bold uppercase">Wave</p>
+                <p className="text-2xl font-black text-white">{runStats.wave}</p>
               </div>
               <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
                 <p className="text-stone-400 text-sm font-bold uppercase">{t.materials}</p>
-                <p className="text-2xl font-black text-amber-500">{materials}</p>
+                <p className="text-2xl font-black text-amber-500">{runStats.materials}</p>
               </div>
             </div>
             <button 
@@ -1244,6 +1297,24 @@ export default function App() {
           <p className="text-stone-400 text-xl font-bold uppercase">This game is best played in landscape mode.</p>
         </div>
       )}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 300, opacity: 0 }}
+              className="fixed bottom-10 right-10 bg-stone-900 border-4 border-b-8 border-amber-600 p-6 rounded-2xl shadow-2xl z-50 flex items-center gap-4 min-w-[300px]"
+            >
+              <div className="bg-amber-100 p-3 rounded-xl">
+                <Sparkles className="w-8 h-8 text-amber-600" />
+              </div>
+              <div>
+                <h4 className="text-white font-black text-xl uppercase tracking-tight">{toast.title}</h4>
+                <p className="text-stone-400 font-bold text-sm uppercase">{toast.desc}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

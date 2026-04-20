@@ -1,4 +1,4 @@
-import { Stats, Weapon, Item, Character } from './types';
+import { Stats, Weapon, Item, Character, WeaponTag } from './types';
 
 export const INITIAL_STATS: Stats = {
   maxHp: 10,
@@ -26,20 +26,37 @@ export const CHARACTERS: Character[] = [
   { id: 'ranger', name: 'Ranger', description: 'Keeps their distance.', skillDescription: '+5 Ranged Dmg, +50 Range, -5 Melee Dmg', statsModifier: { rangedDamage: 5, range: 50, meleeDamage: -5 }, unlockCondition: { type: 'WAVE', value: 5, text: 'Reach Wave 5' }, icon: 'Crosshair', color: 'text-green-500' },
   { id: 'ghost', name: 'Ghost', description: 'Hard to hit, but fragile.', skillDescription: '+30 Dodge, -5 Armor', statsModifier: { dodge: 30, armor: -5 }, unlockCondition: { type: 'WAVE', value: 10, text: 'Reach Wave 10' }, icon: 'Ghost', color: 'text-slate-300' },
   { id: 'merchant', name: 'Merchant', description: 'All about the money.', skillDescription: '+20 Harvest, -20% Damage', statsModifier: { harvest: 20, damagePct: -20 }, unlockCondition: { type: 'MATERIALS', value: 500, text: 'Collect 500 materials total' }, icon: 'Coins', color: 'text-yellow-600' },
+  
+  // NEW CHARACTERS (NEW-1)
+  { id: 'vampire', name: 'Vampire', description: 'Hút máu kẻ thù để tồn tại.', 
+    skillDescription: '+15% Life Steal, -5 Armor, -5 Max HP',
+    statsModifier: { lifeSteal: 15, armor: -5, maxHp: -5 },
+    unlockCondition: { type: 'MATERIALS', value: 2000, text: 'Thu thập 2000 vật liệu tổng cộng' },
+    icon: 'Droplets', color: 'text-red-700' },
+  { id: 'tank', name: 'Tank', description: 'Chậm như rùa nhưng khó chết.',
+    skillDescription: '+30 Max HP, +5 Armor, -30% Speed',
+    statsModifier: { maxHp: 30, armor: 5, speed: -30 },
+    unlockCondition: { type: 'WAVE', value: 15, text: 'Đạt Wave 15' },
+    icon: 'Shield', color: 'text-gray-400' },
+  { id: 'speedrunner', name: 'Speedrunner', description: 'Nhanh như chớp, mong manh như thủy tinh.',
+    skillDescription: '+50% Speed, +10% Attack Speed, -20 Max HP',
+    statsModifier: { speed: 50, attackSpeed: 10, maxHp: -20 },
+    unlockCondition: { type: 'KILLS', value: 1000, text: 'Giết 1000 kẻ địch tổng cộng' },
+    icon: 'Zap', color: 'text-yellow-300' },
 ];
 
 export const WEAPONS: Weapon[] = [
   // PISTOL Tiers
-  { id: 'pistol_1', baseId: 'pistol', name: 'Pistol I', type: 'RANGED', damage: 10, cooldown: 60, range: 300, projectileSpeed: 500, projectileCount: 1, knockback: 5, icon: 'Crosshair', rarity: 1, price: 5, description: 'Súng lục cơ bản' },
-  { id: 'pistol_2', baseId: 'pistol', name: 'Pistol II', type: 'RANGED', damage: 15, cooldown: 55, range: 320, projectileSpeed: 550, projectileCount: 1, knockback: 7, icon: 'Crosshair', rarity: 2, price: 15, description: 'Súng lục cải tiến' },
-  { id: 'pistol_3', baseId: 'pistol', name: 'Pistol III', type: 'RANGED', damage: 25, cooldown: 50, range: 350, projectileSpeed: 600, projectileCount: 1, knockback: 10, icon: 'Crosshair', rarity: 3, price: 40, description: 'Súng lục cao cấp' },
-  { id: 'pistol_4', baseId: 'pistol', name: 'Pistol IV', type: 'RANGED', damage: 45, cooldown: 40, range: 400, projectileSpeed: 700, projectileCount: 1, knockback: 15, icon: 'Crosshair', rarity: 4, price: 100, description: 'Súng lục huyền thoại' },
+  { id: 'pistol_1', baseId: 'pistol', name: 'Pistol I', type: 'RANGED', damage: 10, cooldown: 60, range: 300, projectileSpeed: 500, projectileCount: 1, knockback: 5, icon: 'Crosshair', rarity: 1, price: 5, description: 'Súng lục cơ bản', tags: ['Gun'], rangedDamageScaling: 1.0 },
+  { id: 'pistol_2', baseId: 'pistol', name: 'Pistol II', type: 'RANGED', damage: 15, cooldown: 55, range: 320, projectileSpeed: 550, projectileCount: 1, knockback: 7, icon: 'Crosshair', rarity: 2, price: 15, description: 'Súng lục cải tiến', tags: ['Gun'], rangedDamageScaling: 1.0 },
+  { id: 'pistol_3', baseId: 'pistol', name: 'Pistol III', type: 'RANGED', damage: 25, cooldown: 50, range: 350, projectileSpeed: 600, projectileCount: 1, knockback: 10, icon: 'Crosshair', rarity: 3, price: 40, description: 'Súng lục cao cấp', tags: ['Gun'], rangedDamageScaling: 1.0 },
+  { id: 'pistol_4', baseId: 'pistol', name: 'Pistol IV', type: 'RANGED', damage: 45, cooldown: 40, range: 400, projectileSpeed: 700, projectileCount: 1, knockback: 15, icon: 'Crosshair', rarity: 4, price: 100, description: 'Súng lục huyền thoại', tags: ['Gun'], rangedDamageScaling: 1.0 },
 
   // KNIFE Tiers
-  { id: 'knife_1', baseId: 'knife', name: 'Knife I', type: 'MELEE', damage: 15, cooldown: 45, range: 80, knockback: 10, icon: 'Sword', rarity: 1, price: 5, description: 'Dao găm cơ bản', passive: { trigger: 'ON_HIT', type: 'POISON', value: 5, chance: 20, duration: 5, description: '20% cơ hội gây độc (5 sát thương/5s)' } },
-  { id: 'knife_2', baseId: 'knife', name: 'Knife II', type: 'MELEE', damage: 25, cooldown: 40, range: 90, knockback: 12, icon: 'Sword', rarity: 2, price: 15, description: 'Dao găm sắc bén' },
-  { id: 'knife_3', baseId: 'knife', name: 'Knife III', type: 'MELEE', damage: 45, cooldown: 35, range: 100, knockback: 15, icon: 'Sword', rarity: 3, price: 40, description: 'Dao găm sát thủ' },
-  { id: 'knife_4', baseId: 'knife', name: 'Knife IV', type: 'MELEE', damage: 80, cooldown: 30, range: 120, knockback: 20, icon: 'Sword', rarity: 4, price: 100, description: 'Dao găm huyền thoại' },
+  { id: 'knife_1', baseId: 'knife', name: 'Knife I', type: 'MELEE', damage: 15, cooldown: 45, range: 80, knockback: 10, icon: 'Sword', rarity: 1, price: 5, description: 'Dao găm cơ bản', tags: ['Blade', 'Primitive'], meleeDamageScaling: 0.8, passive: { trigger: 'ON_HIT', type: 'POISON', value: 5, chance: 20, duration: 5, description: '20% cơ hội gây độc (5 sát thương/5s)' } },
+  { id: 'knife_2', baseId: 'knife', name: 'Knife II', type: 'MELEE', damage: 25, cooldown: 40, range: 90, knockback: 12, icon: 'Sword', rarity: 2, price: 15, description: 'Dao găm sắc bén', tags: ['Blade', 'Primitive'], meleeDamageScaling: 0.8 },
+  { id: 'knife_3', baseId: 'knife', name: 'Knife III', type: 'MELEE', damage: 45, cooldown: 35, range: 100, knockback: 15, icon: 'Sword', rarity: 3, price: 40, description: 'Dao găm sát thủ', tags: ['Blade', 'Primitive'], meleeDamageScaling: 0.8 },
+  { id: 'knife_4', baseId: 'knife', name: 'Knife IV', type: 'MELEE', damage: 80, cooldown: 30, range: 120, knockback: 20, icon: 'Sword', rarity: 4, price: 100, description: 'Dao găm huyền thoại', tags: ['Blade', 'Primitive'], meleeDamageScaling: 0.8 },
 
   // SHOTGUN Tiers
   { id: 'shotgun_1', baseId: 'shotgun', name: 'Shotgun I', type: 'RANGED', damage: 8, cooldown: 90, range: 200, projectileSpeed: 400, projectileCount: 4, knockback: 15, icon: 'Zap', rarity: 2, price: 20, description: 'Súng săn tầm gần' },
@@ -123,6 +140,76 @@ export const ITEMS: Item[] = [
   { id: 'oxygen_tank', name: 'Bình Oxy', description: 'Tàng hình 2s khi bị tấn công, hồi chiêu 5 giây', stats: {}, price: 50, rarity: 4, icon: 'Zap' },
   { id: 'badge_10a1', name: 'Huy Hiệu 10A1', description: '+5 All Stats', stats: { maxHp: 5, hpRegen: 5, lifeSteal: 5, damagePct: 5, meleeDamage: 5, rangedDamage: 5, attackSpeed: 5, range: 5, armor: 5, dodge: 5, speed: 5, luck: 5, harvest: 5, critChance: 5, xpGain: 5, pickupRange: 5, shopPrice: -5 }, price: 100, rarity: 4, icon: 'Target' },
 ];
+
+export const SET_BONUSES: Record<WeaponTag, { count: number; stats: Partial<Stats> }[]> = {
+  Primitive: [
+    { count: 2, stats: { maxHp: 3 } },
+    { count: 3, stats: { maxHp: 6 } },
+    { count: 4, stats: { maxHp: 9 } },
+    { count: 5, stats: { maxHp: 12 } },
+    { count: 6, stats: { maxHp: 15 } },
+  ],
+  Blade: [
+    { count: 2, stats: { meleeDamage: 1, lifeSteal: 1 } },
+    { count: 3, stats: { meleeDamage: 2, lifeSteal: 2 } },
+    { count: 4, stats: { meleeDamage: 3, lifeSteal: 3 } },
+    { count: 5, stats: { meleeDamage: 4, lifeSteal: 4 } },
+    { count: 6, stats: { meleeDamage: 5, lifeSteal: 5 } },
+  ],
+  Heavy: [
+    { count: 2, stats: { damagePct: 5 } },
+    { count: 3, stats: { damagePct: 10 } },
+    { count: 4, stats: { damagePct: 15 } },
+    { count: 5, stats: { damagePct: 20 } },
+    { count: 6, stats: { damagePct: 25 } },
+  ],
+  Gun: [
+    { count: 2, stats: { range: 10 } },
+    { count: 3, stats: { range: 20 } },
+    { count: 4, stats: { range: 30 } },
+    { count: 5, stats: { range: 40 } },
+    { count: 6, stats: { range: 50 } },
+  ],
+  Blunt: [
+    { count: 2, stats: { armor: 1, maxHp: 0, speed: -2 } },
+    { count: 3, stats: { armor: 1, maxHp: 2, speed: -4 } },
+    { count: 4, stats: { armor: 2, maxHp: 4, speed: -8 } },
+    { count: 5, stats: { armor: 2, maxHp: 6, speed: -12 } },
+    { count: 6, stats: { armor: 3, maxHp: 6, speed: -15 } },
+  ],
+  Ethereal: [
+    { count: 2, stats: { dodge: 6, armor: -1 } },
+    { count: 3, stats: { dodge: 12, armor: -2 } },
+    { count: 4, stats: { dodge: 18, armor: -3 } },
+    { count: 5, stats: { dodge: 24, armor: -4 } },
+    { count: 6, stats: { dodge: 30, armor: -5 } },
+  ],
+  Support: [
+    { count: 2, stats: { harvest: 5 } },
+    { count: 3, stats: { harvest: 10 } },
+    { count: 4, stats: { harvest: 15 } },
+    { count: 5, stats: { harvest: 20 } },
+    { count: 6, stats: { harvest: 25 } },
+  ],
+  Explosive: [
+    { count: 2, stats: { damagePct: 5 } },
+    { count: 3, stats: { damagePct: 10 } },
+    { count: 4, stats: { damagePct: 15 } },
+    { count: 5, stats: { damagePct: 20 } },
+    { count: 6, stats: { damagePct: 25 } },
+  ],
+  Unarmed: [
+    { count: 2, stats: { dodge: 3 } },
+    { count: 3, stats: { dodge: 6 } },
+    { count: 4, stats: { dodge: 9 } },
+    { count: 5, stats: { dodge: 12 } },
+    { count: 6, stats: { dodge: 15 } },
+  ],
+  Tool: [
+    { count: 2, stats: {} },
+    { count: 6, stats: {} },
+  ],
+};
 
 export const WAVE_DURATION = 20; // seconds
 export const XP_PER_LEVEL = (level: number) => 5 + level * 10;

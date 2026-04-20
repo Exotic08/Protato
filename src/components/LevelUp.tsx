@@ -54,32 +54,46 @@ export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat, luck = 0 }) => {
   }, [luck]);
 
   return (
-    <div className="fixed inset-0 bg-stone-950/90 flex flex-col items-center justify-center p-8 z-50">
+    <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-[5px] z-50 overflow-hidden">
       <motion.div 
-        initial={{ y: 50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="bg-stone-900 border-4 border-b-8 border-stone-700 rounded-3xl p-6 max-w-2xl w-full shadow-2xl text-center"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-900 border-4 md:border-8 border-stone-800 rounded-[2.5rem] md:rounded-[4rem] p-6 md:p-12 flex flex-col shadow-[0_0_150px_rgba(0,0,0,1)] overflow-hidden"
+        style={{ width: '95vw', height: '90vh' }}
       >
-        <h2 className="text-4xl font-black text-blue-400 mb-1 flex items-center justify-center gap-4 drop-shadow-[0_4px_0_rgb(30,58,138)]">
-          <TrendingUp className="w-10 h-10" />
+        <h2 className="text-4xl md:text-8xl font-black text-blue-400 mb-2 md:mb-8 flex items-center justify-center gap-4 md:gap-10 drop-shadow-[0_8px_0_rgb(30,58,138)] shrink-0 italic uppercase">
+          <TrendingUp className="w-12 h-12 md:w-32 md:h-32" />
           LEVEL UP!
         </h2>
-        <p className="text-stone-400 mb-6 text-xl font-bold uppercase">Choose a stat to upgrade</p>
+        <p className="text-stone-400 mb-8 md:mb-16 text-sm md:text-4xl font-black uppercase tracking-[0.3em] shrink-0 text-center drop-shadow-lg">Power Up Your Hero</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 justify-center">
-          {options.map((opt, i) => (
-            <motion.button
-              key={i}
-              whileHover={{ y: -8 }}
-              onClick={() => onSelectStat(opt.stat, opt.value)}
-              className="bg-stone-800 border-4 border-b-8 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-4 md:p-6 rounded-3xl flex flex-row sm:flex-col items-center gap-4 transition-all text-left sm:text-center active:border-b-4 active:translate-y-1 w-full"
-            >
-              <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl bg-stone-950 border-2 border-stone-800 shadow-inner flex-shrink-0 ${opt.color}`}>
-                <opt.icon className="w-8 h-8 md:w-12 md:h-12" />
-              </div>
-              <span className="text-lg md:text-xl font-black text-stone-100 uppercase leading-tight">{opt.name}</span>
-            </motion.button>
-          ))}
+        <div className="flex-1 overflow-y-auto pr-1 md:pr-4 custom-scrollbar pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-10 justify-center">
+            {options.map((opt, i) => (
+              <motion.button
+                key={i}
+                whileHover={{ y: -10, scale: 1.02 }}
+                onClick={() => onSelectStat(opt.stat, opt.value)}
+                className="bg-stone-800 border-4 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] flex flex-col items-center gap-4 md:gap-10 transition-all text-center active:border-b-4 active:translate-y-2 w-full shadow-2xl relative overflow-hidden group border-b-[12px]"
+              >
+                <div className={`p-4 md:p-10 rounded-3xl md:rounded-[2.5rem] bg-stone-950 border-4 border-stone-800 shadow-inner flex-shrink-0 transition-transform group-hover:scale-110 ${opt.color}`}>
+                  <opt.icon className="w-10 h-10 md:w-24 md:h-24" />
+                </div>
+                <div className="flex flex-col gap-1 md:gap-4">
+                  <span className="text-lg md:text-4xl font-black text-stone-100 uppercase leading-none tracking-tight">
+                    {opt.name.split(' ')[0]} {opt.name.split(' ')[1]}
+                  </span>
+                  <span className="text-xs md:text-xl font-bold text-stone-500 uppercase tracking-widest">
+                    Permanent Stat Boost
+                  </span>
+                </div>
+                
+                {/* Visual Flair */}
+                <div className="absolute top-0 right-0 w-16 h-16 md:w-32 md:h-32 bg-white/5 rotate-45 translate-x-8 md:translate-x-16 -translate-y-8 md:-translate-y-16" />
+                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+              </motion.button>
+            ))}
+          </div>
         </div>
       </motion.div>
     </div>

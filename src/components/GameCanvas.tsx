@@ -47,11 +47,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   isHost,
   displayName,
   isMultiplayer,
-  t = {},
+  t = {} as any,
   activeMissions = [],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 4);
+  const currentWaveDuration = Math.min(60, 20 + (wave - 1) * 5);
   const [timer, setTimer] = useState(currentWaveDuration);
   const [playerHp, setPlayerHp] = useState(playerStats.maxHp);
   const [playerStatusEffects, setPlayerStatusEffects] = useState<StatusEffect[]>([]);
@@ -60,6 +60,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [isDead, setIsDead] = useState(false);
   const [isSpectating, setIsSpectating] = useState(false);
   const [reviveProgress, setReviveProgress] = useState<{ [id: string]: number }>({});
+  
+  const lifeStealTimerRef = useRef(0);
   
   // Game state refs to avoid closure issues in the loop
   const playerRef = useRef<Player & { isDead?: boolean }>({
@@ -314,7 +316,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Apply HP Regen
       if (!player.isDead && player.hp < player.maxHp) {
-        player.hp = Math.min(player.maxHp, player.hp + stats.hpRegen * deltaTime);
+        // HP Regen: non-linear formula per GDD
+        if (player.hp < player.maxHp && stats.hpRegen > 0) {
+          const regenRate = stats.hpRegen >= 1 
+            ? 0.20 + (stats.hpRegen - 1) * 0.089  // First point 0.2, each after 0.089
+            : stats.hpRegen * 0.20;               // Fractional
+          player.hp = Math.min(player.maxHp, player.hp + regenRate * deltaTime);
+        }
+
+        // Life steal timer update
+        lifeStealTimerRef.current = Math.max(0, lifeStealTimerRef.current - deltaTime);
       }
 
       // Process Player Status Effects
@@ -511,6 +522,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         
         if (spawnTimerRef.current > spawnRate) {
           spawnTimerRef.current = 0;
+
+          // Giới hạn 100 kẻ địch (BUG-6)
+          const MAX_ENEMIES = 100;
+          if (enemiesRef.current.length >= MAX_ENEMIES) {
+            const normalEnemyIndices = enemiesRef.current
+              .map((e, i) => ({ e, i }))
+              .filter(({ e }) => e.type !== 'BOSS_1' && e.type !== 'BOSS_2' && e.type !== 'LOOT_GOBLIN')
+              .map(({ i }) => i);
+            if (normalEnemyIndices.length > 0) {
+              const removeIdx = normalEnemyIndices[Math.floor(Math.random() * normalEnemyIndices.length)];
+              enemiesRef.current.splice(removeIdx, 1);
+            }
+          }
+
           const side = Math.floor(Math.random() * 4);
           let ex = 0, ey = 0;
           if (side === 0) { ex = Math.random() * MAP_WIDTH; ey = -20; }
@@ -771,19 +796,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (distToLocalPlayer < player.radius + enemy.radius) {
           if (invincibilityTimerRef.current > 0) {
             // Invincible
-          } else if (Math.random() * 100 < stats.dodge && enemy.type !== 'EXPLOSIVE') {
+          } else if (Math.random() * 100 < Math.min(60, stats.dodge) && enemy.type !== 'EXPLOSIVE') {
             // Dodged successfully
             playDodgeSound();
             spawnParticles(player.x, player.y, '#94a3b8', 6);
             if (Math.random() < 0.2) {
-              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: t.dodge || 'DODGE!', color: '#94a3b8', life: 20 });
+              floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: t.dodgeText || 'DODGE!', color: '#94a3b8', life: 20 });
             }
           } else {
-            let actualDamage = 0;
-            const armorReduction = stats.armor >= 0 ? (stats.armor / (stats.armor + 15)) : 0;
+            const armorReduction = stats.armor > 0 ? (stats.armor / (stats.armor + 15)) : 0;
             const enemyDmg = enemy.type === 'EXPLOSIVE' ? 5 : (enemy.damage / 30);
+            const actualDamage = Math.max(1, enemyDmg * (1 - armorReduction));
             
-            actualDamage = Math.max(0.01, enemyDmg * (1 - armorReduction));
+            player.hp -= actualDamage;
             
             if (enemy.type === 'EXPLOSIVE') {
               enemy.hp = 0; // die on explosion
@@ -912,7 +937,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   // Ancient Book scaling (BUG-5)
                   const levelBonus = (weapon.baseId === 'ancient_book' ? player.level * 2 : 0);
                   
-                  let finalDamage = (weapon.damage + stats.rangedDamage + bonusDmg + rampBonus + levelBonus) * (1 + stats.damagePct / 100) * damageMultiplier;
+                  const rScaling = weapon.rangedDamageScaling ?? 1.0;
+                  let finalDamage = (weapon.damage + stats.rangedDamage * rScaling + bonusDmg + rampBonus + levelBonus) * (1 + stats.damagePct / 100) * damageMultiplier;
                   
                   // Old Pistol 6th shot crit
                   let isCrit = Math.random() * 100 < stats.critChance;
@@ -950,7 +976,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 hitTargets.forEach(({ enemy: nearestEnemy }) => {
                   playHitSound();
                   const bonusDmg = weapon.passive?.type === 'DAMAGE_STACK' ? (weaponStacksRef.current[weapon.id] || 0) : 0;
-                  let damage = (weapon.damage + stats.meleeDamage + bonusDmg) * (1 + stats.damagePct / 100);
+                  const mScaling = weapon.meleeDamageScaling ?? 1.0;
+                  let damage = (weapon.damage + stats.meleeDamage * mScaling + bonusDmg) * (1 + stats.damagePct / 100);
                   
                   const isCrit = Math.random() * 100 < stats.critChance;
                   if (isCrit) {
@@ -993,10 +1020,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     nearestEnemy.armorReduction += 5;
                   }
 
-          // Life Steal
-          if (stats.lifeSteal > 0 && damage > 0) {
-            player.hp = Math.min(player.maxHp, (player.hp || 0) + damage * (stats.lifeSteal / 100));
-          }
+                  // Life Steal with cap (POLISH-3)
+                  if (stats.lifeSteal > 0 && damage > 0 && lifeStealTimerRef.current <= 0) {
+                    const heal = Math.min(1, damage * (stats.lifeSteal / 100));
+                    player.hp = Math.min(player.maxHp, (player.hp || 0) + heal);
+                    lifeStealTimerRef.current = 0.1; // Max 10 procs/s
+                  }
                   
                   // Handle ON_HIT passives
                   if (weapon.passive?.trigger === 'ON_HIT') {
@@ -1050,14 +1079,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (p.isEnemy) {
           const d = Math.sqrt((p.x - player.x) ** 2 + (p.y - player.y) ** 2);
           if (d < p.radius + player.radius) {
-            if (Math.random() * 100 < stats.dodge) {
+            const effectiveDodge = Math.min(60, stats.dodge);
+            if (Math.random() * 100 < effectiveDodge) {
               floatingTextsRef.current.push({ x: player.x, y: player.y - 20, text: t.dodge || 'DODGE!', color: '#94a3b8', life: 20 });
               playDodgeSound(); // DODGE SOUND
               spawnParticles(player.x, player.y, '#94a3b8', 6);
               return false; // Dodged, but projectile still destroyed
             }
-            const armorReduction = stats.armor >= 0 ? (stats.armor / (stats.armor + 15)) : 0;
-            const actualDmg = Math.max(0.01, p.damage * (1 - armorReduction));
+            const armorReduction = stats.armor > 0 ? (stats.armor / (stats.armor + 15)) : 0;
+            const actualDmg = Math.max(1, p.damage * (1 - armorReduction));
             player.hp -= actualDmg;
             shakeRef.current = 3;
             playPlayerHitSound(); // PLAYER HIT SOUND
@@ -1120,9 +1150,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   spawnParticles(e.x, e.y, e.color, 4);
                 }
                 
-                // Life Steal
-                if (stats.lifeSteal > 0 && p.damage > 0) {
-                  player.hp = Math.min(player.maxHp, (player.hp || 0) + p.damage * (stats.lifeSteal / 100));
+                // Life Steal with cap (POLISH-3)
+                if (stats.lifeSteal > 0 && p.damage > 0 && lifeStealTimerRef.current <= 0) {
+                  const heal = Math.min(1, p.damage * (stats.lifeSteal / 100));
+                  player.hp = Math.min(player.maxHp, (player.hp || 0) + heal);
+                  lifeStealTimerRef.current = 0.1;
                 }
 
                 // Handle ranged passives
