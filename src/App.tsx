@@ -1040,52 +1040,62 @@ export default function App() {
         )}
 
         {gameState === 'MODE_SELECT' && (
-          <motion.div 
-            key="missions"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-stone-900 p-8 rounded-3xl border-4 border-b-8 border-stone-700 max-w-2xl w-full"
-          >
-            <h2 className="text-5xl font-black mb-8 text-amber-500 flex items-center gap-4 drop-shadow-[0_4px_0_rgb(180,83,9)]">
-              <Target className="w-10 h-10" /> {t.activeMissions}
-            </h2>
-            <div className="space-y-4 mb-8 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-              {missions.map(m => {
-                const title = m.id === 'm1' ? t.missionSlayerTitle : m.id === 'm2' ? t.missionHoarderTitle : m.title;
-                const desc = m.id === 'm1' ? t.missionSlayerDesc : m.id === 'm2' ? t.missionHoarderDesc : m.description;
-                return (
-                  <div key={m.id} className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700 shadow-inner">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-2xl font-black text-stone-100 uppercase">{title}</h3>
-                      <span className="text-green-400 font-black text-xl bg-stone-950 px-3 py-1 rounded-lg border border-stone-800">+{m.reward} MAT</span>
-                    </div>
-                    <p className="text-stone-400 text-sm font-bold mb-4 uppercase">{desc}</p>
-                    <div className="w-full bg-stone-950 h-4 rounded-full overflow-hidden border-2 border-stone-800 shadow-inner">
-                      <div 
-                        className="bg-amber-500 h-full transition-all" 
-                        style={{ width: `${(m.current / m.target) * 100}%` }}
-                      />
-                    </div>
-                    <div className="text-right text-xs font-bold text-stone-500 mt-2">{Math.floor(m.current)} / {m.target}</div>
-                  </div>
-                );
-              })}
-            </div>
-            
-            <button 
-              onClick={() => { playClickSound(); startGame('MISSION'); }}
-              className="w-full py-5 bg-amber-600 hover:bg-amber-500 text-white font-black text-2xl rounded-2xl border-4 border-b-8 border-amber-800 active:border-b-4 active:translate-y-1 transition-all mb-4"
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <motion.div 
+              key="missions"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-stone-900 border-4 md:border-8 border-stone-800 rounded-[2.5rem] md:rounded-[4rem] p-8 md:p-16 flex flex-col shadow-[0_0_150px_rgba(0,0,0,1)] overflow-hidden"
+              style={{ width: '70%', height: '70%' }}
             >
-              🚀 {t.startMissionRun || 'START MISSION RUN'}
-            </button>
+              <h2 className="text-3xl md:text-5xl font-black mb-6 md:mb-12 text-amber-500 flex items-center gap-4 md:gap-8 drop-shadow-[0_6px_0_rgb(180,83,9)] uppercase italic px-4">
+                <Target className="w-8 h-8 md:w-16 md:h-16" /> {t.activeMissions}
+              </h2>
+              
+              <div className="flex-1 space-y-4 md:space-y-8 mb-6 md:mb-12 overflow-y-auto pr-4 custom-scrollbar">
+                {missions.map(m => {
+                  const title = m.id === 'm1' ? t.missionSlayerTitle : m.id === 'm2' ? t.missionHoarderTitle : m.title;
+                  const desc = m.id === 'm1' ? t.missionSlayerDesc : m.id === 'm2' ? t.missionHoarderDesc : m.description;
+                  return (
+                    <div key={m.id} className="bg-stone-950 p-4 md:p-8 rounded-[1.5rem] md:rounded-[2.2rem] border-4 md:border-6 border-stone-800 shadow-inner group hover:border-amber-500/30 transition-all">
+                      <div className="flex justify-between items-start mb-3 md:mb-6 flex-wrap gap-3">
+                        <h3 className="text-xl md:text-4xl font-black text-stone-100 uppercase tracking-tight">{title}</h3>
+                        <span className="text-green-400 font-black text-lg md:text-3xl bg-stone-900 px-4 py-2 md:px-7 md:py-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-stone-800 shadow-xl">+{m.reward} MAT</span>
+                      </div>
+                      <p className="text-stone-400 text-sm md:text-xl font-bold mb-4 md:mb-8 uppercase tracking-wide leading-relaxed">{desc}</p>
+                      <div className="relative">
+                        <div className="w-full bg-stone-900 h-6 md:h-10 rounded-full overflow-hidden border-2 md:border-4 border-stone-800 shadow-inner">
+                          <div 
+                            className="bg-amber-500 h-full transition-all shadow-[0_0_15px_rgba(245,158,11,0.5)]" 
+                            style={{ width: `${(m.current / m.target) * 100}%` }}
+                          />
+                        </div>
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white font-black text-xs md:text-2xl drop-shadow-md">
+                          {Math.floor(m.current)} / {m.target}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 shrink-0">
+                <button 
+                  onClick={() => { playClickSound(); startGame('MISSION'); }}
+                  className="w-full py-4 md:py-8 bg-amber-600 hover:bg-amber-500 text-white font-black text-xl md:text-4xl rounded-2xl md:rounded-[2.5rem] border-4 md:border-6 border-b-8 md:border-b-16 border-amber-800 active:border-b-2 active:translate-y-2 md:active:translate-y-4 transition-all shadow-lg"
+                >
+                  🚀 {t.startMissionRun || 'START MISSION RUN'}
+                </button>
 
-            <button 
-              onClick={() => setGameState('MENU')}
-              className="w-full py-4 bg-stone-800 hover:bg-stone-700 text-stone-100 font-black text-xl rounded-2xl border-4 border-b-8 border-stone-950 active:border-b-4 active:translate-y-1 transition-all"
-            >
-              {t.backToMenu}
-            </button>
-          </motion.div>
+                <button 
+                  onClick={() => setGameState('MENU')}
+                  className="w-full py-4 md:py-8 bg-stone-800 hover:bg-stone-700 text-stone-100 font-black text-xl md:text-4xl rounded-2xl md:rounded-[2.5rem] border-4 md:border-6 border-b-8 md:border-b-16 border-stone-950 active:border-b-2 active:translate-y-2 md:active:translate-y-4 transition-all shadow-xl"
+                >
+                  {t.backToMenu}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
 
         {gameState === 'SOUL_SHOP' && (
@@ -1202,72 +1212,103 @@ export default function App() {
         )}
 
         {gameState === 'GAME_OVER' && (
-          <motion.div 
-            key="gameover"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-red-900 shadow-2xl max-w-2xl w-full z-10"
-          >
-            < Skull className="w-32 h-32 text-red-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(153,27,27)]" />
-            <h2 className="text-8xl font-black text-red-500 mb-4 drop-shadow-[0_6px_0_rgb(153,27,27)] uppercase">{t.gameOver}</h2>
-            <p className="text-stone-400 text-3xl font-black mb-8 uppercase text-center">You survived <span className="text-amber-500">{wave}</span> {t.wave} in <span className="text-amber-500">{gameMode}</span> mode.</p>
-            
-            <div className="grid grid-cols-2 gap-4 mb-10 text-left">
-              <div className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700">
-                <p className="text-stone-500 text-xs font-black uppercase mb-1">Items Collected</p>
-                <p className="text-3xl font-black text-amber-500">{items.length}</p>
-              </div>
-              <div className="bg-stone-800 p-5 rounded-2xl border-2 border-stone-700">
-                <p className="text-stone-500 text-xs font-black uppercase mb-1">Total Kills</p>
-                <p className="text-3xl font-black text-white">{globalStats.totalKills}</p>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => setGameState('MENU')}
-              className="px-10 py-5 bg-stone-200 text-stone-950 font-black text-3xl rounded-2xl border-4 border-b-8 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-1 transition-all flex items-center gap-4 mx-auto"
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+            <motion.div 
+              key="gameover"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-center bg-stone-900 border-4 md:border-8 border-red-900 rounded-[3rem] md:rounded-[5rem] p-8 md:p-20 flex flex-col shadow-[0_0_200px_rgba(239,68,68,0.2)]"
+              style={{ width: '70%', height: '70%' }}
             >
-              <RotateCcw className="w-8 h-8" /> {t.backToMenu}
-            </button>
-          </motion.div>
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Skull className="w-14 h-14 md:w-24 md:h-24 text-red-500 mx-auto mb-4 md:mb-8 drop-shadow-[0_4px_0_rgb(153,27,27)]" />
+              </motion.div>
+
+              <h2 className="text-3xl md:text-5xl font-black text-red-500 mb-3 md:mb-6 drop-shadow-[0_4px_0_rgb(153,27,27)] uppercase tracking-tighter italic leading-none">
+                {t.gameOver}
+              </h2>
+              
+              <p className="text-stone-400 text-base md:text-2xl font-black mb-6 md:mb-10 uppercase">
+                You survived <span className="text-amber-500 text-xl md:text-4xl">{wave}</span> {t.wave} in <span className="text-amber-500 text-xl md:text-4xl">{gameMode}</span> mode.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-3 md:gap-6 mb-6 md:mb-10 text-left max-w-2xl mx-auto w-full">
+                <div className="bg-stone-950 p-3 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-stone-800 shadow-inner">
+                  <p className="text-stone-500 text-[8px] md:text-xs font-black uppercase mb-1 md:mb-2 tracking-widest leading-none">Items Collected</p>
+                  <p className="text-xl md:text-3xl font-black text-amber-500 leading-none">{items.length}</p>
+                </div>
+                <div className="bg-stone-950 p-3 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-stone-800 shadow-inner">
+                  <p className="text-stone-500 text-[8px] md:text-xs font-black uppercase mb-1 md:mb-2 tracking-widest leading-none">Total Kills</p>
+                  <p className="text-xl md:text-3xl font-black text-white leading-none">{globalStats.totalKills}</p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setGameState('MENU')}
+                className="px-8 py-4 md:px-12 md:py-8 bg-stone-200 text-stone-950 font-black text-base md:text-2xl rounded-2xl md:rounded-[2rem] border-4 md:border-6 border-b-8 md:border-b-12 border-stone-400 hover:bg-white active:border-b-2 active:translate-y-2 md:active:translate-y-4 transition-all flex items-center gap-3 md:gap-6 mx-auto shadow-lg"
+              >
+                <RotateCcw className="w-6 h-6 md:w-10 md:h-10" /> {t.backToMenu}
+              </button>
+            </motion.div>
+          </div>
         )}
 
         {gameState === 'VICTORY' && (
-          <motion.div 
-            key="victory"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-center bg-stone-900 p-12 rounded-3xl border-4 border-b-8 border-amber-600 shadow-2xl max-w-2xl w-full z-10"
-          >
-            <Trophy className="w-32 h-32 text-amber-500 mx-auto mb-6 drop-shadow-[0_4px_0_rgb(180,83,9)]" />
-            <h2 className="text-8xl font-black text-amber-500 mb-4 drop-shadow-[0_6px_0_rgb(180,83,9)] uppercase">{t.victory}</h2>
-            <p className="text-stone-200 text-3xl font-black mb-6 uppercase">You have survived {t.wave} 20!</p>
-            <div className="grid grid-cols-3 gap-4 mb-12">
-              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
-                <p className="text-stone-400 text-sm font-bold uppercase">Kills</p>
-                <p className="text-2xl font-black text-white">{runStats.kills}</p>
-              </div>
-              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
-                <p className="text-stone-400 text-sm font-bold uppercase">Wave</p>
-                <p className="text-2xl font-black text-white">{runStats.wave}</p>
-              </div>
-              <div className="bg-stone-800 p-4 rounded-xl border-2 border-stone-700">
-                <p className="text-stone-400 text-sm font-bold uppercase">{t.materials}</p>
-                <p className="text-2xl font-black text-amber-500">{runStats.materials}</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => {
-                setGameState('MENU');
-                // Could award a win bonus or unlock something here
-              }}
-              className="px-10 py-5 bg-amber-600 text-white font-black text-3xl rounded-2xl border-4 border-b-8 border-amber-800 hover:bg-amber-500 active:border-b-4 active:translate-y-1 transition-all flex items-center gap-4 mx-auto"
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+            <motion.div 
+              key="victory"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-center bg-stone-900 border-4 md:border-8 border-amber-600 rounded-[3rem] md:rounded-[5rem] p-8 md:p-20 flex flex-col shadow-[0_0_200px_rgba(245,158,11,0.2)]"
+              style={{ width: '70%', height: '70%' }}
             >
-              <RotateCcw className="w-8 h-8" /> {t.backToMenu}
-            </button>
-          </motion.div>
+              <motion.div
+                animate={{ rotate: [0, 8, -8, 0] }}
+                transition={{ duration: 3, repeat: Infinity }}
+              >
+                <Trophy className="w-14 h-14 md:w-24 md:h-24 text-amber-500 mx-auto mb-4 md:mb-8 drop-shadow-[0_4px_0_rgb(180,83,9)]" />
+              </motion.div>
+
+              <h2 className="text-3xl md:text-5xl font-black text-amber-500 mb-3 md:mb-6 drop-shadow-[0_4px_0_rgb(180,83,9)] uppercase tracking-tighter italic leading-none">
+                {t.victory}
+              </h2>
+              
+              <p className="text-stone-200 text-base md:text-2xl font-black mb-8 md:mb-12 uppercase">
+                You have survived {t.wave} 20!
+              </p>
+
+              <div className="grid grid-cols-3 gap-2 md:gap-6 mb-8 md:mb-12 max-w-3xl mx-auto w-full">
+                <div className="bg-stone-950 p-3 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-stone-800 shadow-inner">
+                  <p className="text-stone-500 text-[8px] md:text-xs font-black uppercase mb-1 md:mb-2 tracking-widest">Kills</p>
+                  <p className="text-xl md:text-4xl font-black text-white">{runStats.kills}</p>
+                </div>
+                <div className="bg-stone-950 p-3 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-stone-800 shadow-inner">
+                  <p className="text-stone-500 text-[8px] md:text-xs font-black uppercase mb-1 md:mb-2 tracking-widest">Wave</p>
+                  <p className="text-xl md:text-4xl font-black text-white">{runStats.wave}</p>
+                </div>
+                <div className="bg-stone-950 p-3 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-stone-800 shadow-inner">
+                  <p className="text-stone-500 text-[8px] md:text-xs font-black uppercase mb-1 md:mb-2 tracking-widest">{t.materials}</p>
+                  <p className="text-xl md:text-4xl font-black text-amber-500">{runStats.materials}</p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  setGameState('MENU');
+                }}
+                className="px-12 py-6 md:px-20 md:py-10 bg-amber-600 text-white font-black text-xl md:text-4xl rounded-[2rem] md:rounded-[3rem] border-4 md:border-6 border-b-12 md:border-b-24 border-amber-800 hover:bg-amber-500 active:border-b-2 active:translate-y-2 md:active:translate-y-4 transition-all flex items-center gap-4 md:gap-8 mx-auto shadow-lg"
+              >
+                <RotateCcw className="w-8 h-8 md:w-14 md:h-14" /> {t.backToMenu}
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
+      </div>
 
       <AnimatePresence>
         {toast && (
@@ -1297,25 +1338,6 @@ export default function App() {
           <p className="text-stone-400 text-xl font-bold uppercase">This game is best played in landscape mode.</p>
         </div>
       )}
-        <AnimatePresence>
-          {toast && (
-            <motion.div
-              initial={{ x: 300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 300, opacity: 0 }}
-              className="fixed bottom-10 right-10 bg-stone-900 border-4 border-b-8 border-amber-600 p-6 rounded-2xl shadow-2xl z-50 flex items-center gap-4 min-w-[300px]"
-            >
-              <div className="bg-amber-100 p-3 rounded-xl">
-                <Sparkles className="w-8 h-8 text-amber-600" />
-              </div>
-              <div>
-                <h4 className="text-white font-black text-xl uppercase tracking-tight">{toast.title}</h4>
-                <p className="text-stone-400 font-bold text-sm uppercase">{toast.desc}</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
     </div>
   );
 }

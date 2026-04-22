@@ -59,37 +59,37 @@ export const LevelUp: React.FC<LevelUpProps> = ({ onSelectStat, luck = 0 }) => {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-900 border-4 md:border-8 border-stone-800 rounded-[2.5rem] md:rounded-[4rem] p-6 md:p-12 flex flex-col shadow-[0_0_150px_rgba(0,0,0,1)] overflow-hidden"
-        style={{ width: '95vw', height: '90vh' }}
+        style={{ width: '70%', height: '70%' }}
       >
-        <h2 className="text-4xl md:text-8xl font-black text-blue-400 mb-2 md:mb-8 flex items-center justify-center gap-4 md:gap-10 drop-shadow-[0_8px_0_rgb(30,58,138)] shrink-0 italic uppercase">
-          <TrendingUp className="w-12 h-12 md:w-32 md:h-32" />
+        <h2 className="text-3xl md:text-5xl font-black text-blue-400 mb-1 md:mb-6 flex items-center justify-center gap-3 md:gap-6 drop-shadow-[0_4px_0_rgb(30,58,138)] shrink-0 italic uppercase">
+          <TrendingUp className="w-8 h-8 md:w-16 md:h-16" />
           LEVEL UP!
         </h2>
-        <p className="text-stone-400 mb-8 md:mb-16 text-sm md:text-4xl font-black uppercase tracking-[0.3em] shrink-0 text-center drop-shadow-lg">Power Up Your Hero</p>
+        <p className="text-stone-400 mb-6 md:mb-10 text-xs md:text-xl font-black uppercase tracking-[0.2em] shrink-0 text-center drop-shadow-lg">Power Up Your Hero</p>
 
         <div className="flex-1 overflow-y-auto pr-1 md:pr-4 custom-scrollbar pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-10 justify-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-8 justify-center">
             {options.map((opt, i) => (
               <motion.button
                 key={i}
-                whileHover={{ y: -10, scale: 1.02 }}
+                whileHover={{ y: -8, scale: 1.02 }}
                 onClick={() => onSelectStat(opt.stat, opt.value)}
-                className="bg-stone-800 border-4 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] flex flex-col items-center gap-4 md:gap-10 transition-all text-center active:border-b-4 active:translate-y-2 w-full shadow-2xl relative overflow-hidden group border-b-[12px]"
+                className="bg-stone-800 border-4 border-stone-700 hover:border-blue-500 hover:bg-stone-700 p-4 md:p-8 rounded-[1.8rem] md:rounded-[2.8rem] flex flex-col items-center gap-3 md:gap-6 transition-all text-center active:border-b-4 active:translate-y-2 w-full shadow-2xl relative overflow-hidden group border-b-[8px] md:border-b-[12px]"
               >
-                <div className={`p-4 md:p-10 rounded-3xl md:rounded-[2.5rem] bg-stone-950 border-4 border-stone-800 shadow-inner flex-shrink-0 transition-transform group-hover:scale-110 ${opt.color}`}>
-                  <opt.icon className="w-10 h-10 md:w-24 md:h-24" />
+                <div className={`p-3 md:p-6 rounded-2xl md:rounded-[2rem] bg-stone-950 border-2 md:border-4 border-stone-800 shadow-inner flex-shrink-0 transition-transform group-hover:scale-110 ${opt.color}`}>
+                  <opt.icon className="w-8 h-8 md:w-16 md:h-16" />
                 </div>
-                <div className="flex flex-col gap-1 md:gap-4">
-                  <span className="text-lg md:text-4xl font-black text-stone-100 uppercase leading-none tracking-tight">
+                <div className="flex flex-col gap-1 md:gap-3">
+                  <span className="text-base md:text-2xl font-black text-stone-100 uppercase leading-none tracking-tight">
                     {opt.name.split(' ')[0]} {opt.name.split(' ')[1]}
                   </span>
-                  <span className="text-xs md:text-xl font-bold text-stone-500 uppercase tracking-widest">
+                  <span className="text-[10px] md:text-sm font-bold text-stone-500 uppercase tracking-widest">
                     Permanent Stat Boost
                   </span>
                 </div>
                 
                 {/* Visual Flair */}
-                <div className="absolute top-0 right-0 w-16 h-16 md:w-32 md:h-32 bg-white/5 rotate-45 translate-x-8 md:translate-x-16 -translate-y-8 md:-translate-y-16" />
+                <div className="absolute top-0 right-0 w-12 h-12 md:w-24 md:h-24 bg-white/5 rotate-45 translate-x-6 md:translate-x-12 -translate-y-6 md:-translate-y-12" />
                 <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
               </motion.button>
             ))}

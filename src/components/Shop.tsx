@@ -186,29 +186,29 @@ export const Shop: React.FC<ShopProps> = ({
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-900 border-4 md:border-8 border-stone-800 rounded-[2.5rem] md:rounded-[4rem] p-6 md:p-12 flex flex-col shadow-[0_0_150px_rgba(0,0,0,1)] overflow-hidden"
-        style={{ width: '95vw', height: '90vh' }}
+        style={{ width: '70%', height: '70%' }}
       >
         <div className="overflow-y-auto flex-1 pr-3 custom-scrollbar pb-10">
-          <div className="flex justify-between items-center mb-10 flex-wrap gap-6 sticky top-0 bg-stone-900/95 z-30 pb-6 border-b-4 border-stone-800">
-            <h2 className="text-4xl md:text-7xl font-black text-amber-500 flex items-center gap-4 md:gap-6 drop-shadow-[0_8px_0_rgb(180,83,9)] italic">
-              <ShoppingCart className="w-10 h-10 md:w-16 md:h-16" />
+          <div className="flex justify-between items-center mb-6 flex-wrap gap-4 sticky top-0 bg-stone-900/95 z-30 pb-4 border-b-2 border-stone-800">
+            <h2 className="text-3xl md:text-5xl font-black text-amber-500 flex items-center gap-3 md:gap-4 drop-shadow-[0_4px_0_rgb(180,83,9)] italic">
+              <ShoppingCart className="w-8 h-8 md:w-12 md:h-12" />
               SHOP
             </h2>
-            <div className="flex items-center gap-4 md:gap-10">
-              <div className="text-2xl md:text-4xl font-black text-green-400 bg-stone-950 px-6 py-3 md:px-10 md:py-4 rounded-2xl border-4 border-stone-800 shadow-inner flex items-center gap-3">
-                <Coins className="w-8 h-8 md:w-12 md:h-12 text-amber-500" />
+            <div className="flex items-center gap-3 md:gap-6">
+              <div className="text-xl md:text-2xl font-black text-green-400 bg-stone-950 px-4 py-2 md:px-7 md:py-3 rounded-xl border-2 border-stone-800 shadow-inner flex items-center gap-2">
+                <Coins className="w-6 h-6 md:w-9 md:h-9 text-amber-500" />
                 {materials}
               </div>
               <button
                 onClick={handleReroll}
-                className={`flex items-center gap-3 px-6 py-3 md:px-10 md:py-4 rounded-2xl font-black text-xl md:text-3xl border-4 border-b-[12px] md:border-b-[16px] transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-4 active:translate-y-3' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
+                className={`flex items-center gap-3 px-4 py-2 md:px-7 md:py-3 rounded-xl font-black text-base md:text-xl border-2 border-b-8 md:border-b-10 transition-all ${materials >= rerollCost ? 'bg-stone-200 text-stone-950 border-stone-400 hover:bg-white active:border-b-2 active:translate-y-2' : 'bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed'}`}
               >
-                <RefreshCw className="w-6 h-6 md:w-10 md:h-10" /> REROLL ({rerollCost})
+                <RefreshCw className="w-5 h-5 md:w-8 md:h-8" /> REROLL ({rerollCost})
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-12 mb-14">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 mb-10">
             {shopItems.map((item) => {
               const isWeapon = 'type' in item;
               const rarityClass = getRarityColor(item.rarity);
@@ -216,37 +216,37 @@ export const Shop: React.FC<ShopProps> = ({
               return (
                 <motion.div
                   key={item.id}
-                  whileHover={{ y: -10, scale: 1.03 }}
-                  className={`border-4 md:border-8 rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-10 flex flex-col gap-6 md:gap-10 cursor-pointer transition-all active:translate-y-3 ${rarityClass} min-h-[280px] md:min-h-[450px] relative shadow-[0_20px_40px_rgba(0,0,0,0.5)]`}
-                  style={{ borderBottomWidth: '16px' }}
+                  whileHover={{ y: -8, scale: 1.02 }}
+                  className={`border-4 md:border-6 rounded-[1.8rem] md:rounded-[2.5rem] p-4 md:p-8 flex flex-col gap-4 md:gap-8 cursor-pointer transition-all active:translate-y-2 ${rarityClass} min-h-[220px] md:min-h-[350px] relative shadow-[0_15px_30px_rgba(0,0,0,0.5)]`}
+                  style={{ borderBottomWidth: '12px' }}
                   onClick={() => handleBuy(item)}
                 >
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleLock(item.id); }}
-                    className={`absolute top-3 md:top-6 right-3 md:right-6 p-3 md:p-5 rounded-2xl border-4 md:border-8 z-20 transition-all ${lockedItemIds.includes(item.id) ? 'bg-amber-500 border-amber-700 text-stone-900 shadow-[0_6px_0_rgb(180,83,9)] scale-110' : 'bg-stone-800 border-stone-900 text-stone-500 hover:text-stone-300'}`}
+                    className={`absolute top-2 md:top-4 right-2 md:right-4 p-2 md:p-4 rounded-xl border-2 md:border-4 z-20 transition-all ${lockedItemIds.includes(item.id) ? 'bg-amber-500 border-amber-700 text-stone-900 shadow-[0_4px_0_rgb(180,83,9)] scale-110' : 'bg-stone-800 border-stone-900 text-stone-500 hover:text-stone-300'}`}
                   >
-                    {lockedItemIds.includes(item.id) ? <Lock className="w-8 h-8 md:w-12 md:h-12" /> : <Unlock className="w-8 h-8 md:w-12 md:h-12" />}
+                    {lockedItemIds.includes(item.id) ? <Lock className="w-6 h-6 md:w-8 md:h-8" /> : <Unlock className="w-6 h-6 md:w-8 md:h-8" />}
                   </button>
 
-                  <div className="flex flex-col gap-6 md:gap-10">
-                    <div className={`w-28 h-28 md:w-48 md:h-48 rounded-[2rem] md:rounded-[3rem] flex items-center justify-center bg-gradient-to-br from-stone-800 to-stone-950 border-4 md:border-8 border-black/20 shadow-inner overflow-hidden relative mx-auto`}>
+                  <div className="flex flex-col gap-4 md:gap-8">
+                    <div className={`w-20 h-20 md:w-32 md:h-32 rounded-[1.5rem] md:rounded-[2rem] flex items-center justify-center bg-gradient-to-br from-stone-800 to-stone-950 border-2 md:border-4 border-black/20 shadow-inner overflow-hidden relative mx-auto`}>
                       {isWeapon ? (
-                        <WeaponIllustration id={item.id} size={80} className="md:hidden relative z-10" />
+                        <WeaponIllustration id={item.id} size={60} className="md:hidden relative z-10" />
                       ) : (
-                        <ItemIllustration id={item.id} size={80} className="md:hidden relative z-10" />
+                        <ItemIllustration id={item.id} size={60} className="md:hidden relative z-10" />
                       )}
                       {isWeapon ? (
-                        <WeaponIllustration id={item.id} size={140} className="hidden md:block relative z-10" />
+                        <WeaponIllustration id={item.id} size={100} className="hidden md:block relative z-10" />
                       ) : (
-                        <ItemIllustration id={item.id} size={140} className="hidden md:block relative z-10" />
+                        <ItemIllustration id={item.id} size={100} className="hidden md:block relative z-10" />
                       )}
                       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent)]" />
                     </div>
                     <div className="flex-1 text-center w-full">
-                      <h3 className="text-xl md:text-4xl font-black uppercase leading-tight mb-3 md:mb-4 tracking-tight">{item.name}</h3>
-                      <div className="flex items-center justify-center gap-3 mb-6 md:mb-8">
-                        <span className="text-green-400 font-black text-2xl md:text-5xl">{item.price}</span>
-                        <Coins className="w-8 h-8 md:w-12 md:h-12 text-amber-500" />
+                      <h3 className="text-lg md:text-2xl font-black uppercase leading-tight mb-2 md:mb-3 tracking-tight">{item.name}</h3>
+                      <div className="flex items-center justify-center gap-2 mb-4 md:mb-6">
+                        <span className="text-green-400 font-black text-xl md:text-3xl">{item.price}</span>
+                        <Coins className="w-6 h-6 md:w-8 md:h-8 text-amber-500" />
                       </div>
                       <p className="text-stone-300 text-xs md:text-xl font-black uppercase leading-tight bg-black/40 p-4 md:p-8 rounded-[1.5rem] md:rounded-[2rem] border border-white/5 line-clamp-3 md:line-clamp-none italic">
                         {isWeapon ? ((item as Weapon).description || `DMG: ${(item as Weapon).damage}`) : (item as Item).description}
